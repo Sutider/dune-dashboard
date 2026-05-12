@@ -32,6 +32,9 @@ internal-scripts/ssh/sshKey
 # SSL Certificates
 ssl/
 
+# Temporary files from certbot
+certbot-out.txt
+
 # Backups
 backups/
 
@@ -71,3 +74,6 @@ htmlcov/
 .coverage.*
 coverage.xml
 .pytest_cache/
+
+# AI-generated analysis docs
+AI_DOCS/

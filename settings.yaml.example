@@ -19,6 +19,11 @@ dashboard:
   secret_key: "change-me-to-random-string"  # For session security
   ssl_cert: null               # Path to SSL cert (null = HTTP only)
   ssl_key: null                # Path to SSL key (null = HTTP only)
+  ssl_domain: null             # Domain for Let's Encrypt (e.g. dashboard.example.com)
+  ssl_email: null              # Email for Let's Encrypt notifications
+                               # For Let's Encrypt or custom CA:
+                               #   ssl_cert: /etc/letsencrypt/live/yourdomain/fullchain.pem
+                               #   ssl_key: /etc/letsencrypt/live/yourdomain/privkey.pem
 
 # Database (accessed via SSH tunnel)
 database:
@@ -54,3 +59,8 @@ logging:
   file: "logs/dashboard.log"
   max_bytes: 10485760          # 10MB
   backup_count: 5
+
+# SSL certificate auto-renewal
+ssl:
+  check_interval_hours: 24     # How often to check cert expiry
+  renewal_days_before_expiry: 30  # Regenerate if expiring within this many days

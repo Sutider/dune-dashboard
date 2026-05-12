@@ -20,6 +20,8 @@ DEFAULTS = {
         'secret_key': 'change-me-to-random-string',
         'ssl_cert': None,
         'ssl_key': None,
+        'ssl_domain': None,
+        'ssl_email': None,
     },
     'database': {
         'host': '127.0.0.1',
@@ -56,6 +58,10 @@ DEFAULTS = {
         'file': 'logs/dashboard.log',
         'max_bytes': 10485760,
         'backup_count': 5,
+    },
+    'ssl': {
+        'check_interval_hours': 24,
+        'renewal_days_before_expiry': 30,
     },
 }
 

@@ -181,6 +181,32 @@ if (-not $dbTest) {
 }
 Write-Host "[OK]   Database connected" -ForegroundColor Green
 
+# Check firewall rules
+$fwRuleName = "DuneDashboard"
+$fwExists = $null
+try { $fwExists = Get-NetFirewallRule -DisplayName $fwRuleName -ErrorAction SilentlyContinue } catch {}
+if (-not $fwExists) {
+    Write-Host "[WARN] No firewall rule found. Remote access to the dashboard will be blocked." -ForegroundColor Yellow
+    Write-Host "  Ports needed: 80 (HTTP redirect), $DashboardPort (HTTPS)" -ForegroundColor Yellow
+    Write-Host ""
+    $SetupFirewall = Read-Host "  Create firewall rules now? Requires Administrator (Y/n)"
+    if ($SetupFirewall -ne 'n' -and $SetupFirewall -ne 'N') {
+        $isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+        if (-not $isAdmin) {
+            Write-Host "  Starting elevated PowerShell to add firewall rules..." -ForegroundColor Yellow
+            $fwScript = "New-NetFirewallRule -DisplayName DuneDashboard -Direction Inbound -Action Allow -Protocol TCP -LocalPort 80,$DashboardPort; Write-Host ''; Read-Host 'Press Enter to close'"
+            Start-Process powershell -ArgumentList "-NoProfile", "-Command", $fwScript -Verb RunAs -Wait
+            Write-Host "[OK]   Firewall rules added." -ForegroundColor Green
+        } else {
+            New-NetFirewallRule -DisplayName DuneDashboard -Direction Inbound -Action Allow -Protocol TCP -LocalPort 80, $DashboardPort
+            Write-Host "[OK]   Firewall rules added for ports 80, $DashboardPort." -ForegroundColor Green
+        }
+    } else {
+        Write-Host "  Skipped. External access will be blocked." -ForegroundColor Yellow
+    }
+    Write-Host ""
+}
+
 # Check dependencies
 Write-Host "[4/4] Starting dashboard..." -ForegroundColor Yellow
 $pipCheck = python -c "import flask_socketio, yaml, flask_login" 2>$null

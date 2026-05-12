@@ -25,6 +25,8 @@ A comprehensive web-based management dashboard for Dune: Awakening private serve
 - **Vehicles & Buildings**: Track owned vehicles, modules, and player structures.
 - **Auto-Update**: Background checker polls GitHub for new commits. Safe file replacement preserves your settings, logs, and SSH keys. One-click update from the dashboard.
 - **Remote Access**: Built-in support for HTTPS and binding to `0.0.0.0` for secure remote management.
+- **Let's Encrypt**: Optionally set up publicly trusted SSL certs during setup with automatic renewal via certbot.
+- **Firewall Management**: Setup and launcher scripts automatically create/check firewall rules for required ports.
 - **Settings Migration**: Automatically adds new configuration options to `settings.yaml` when updating, so you never miss a feature.
 - **Cross-Platform**: Works on Windows (`.bat`/`.ps1`) and Linux/macOS (`.sh`).
 
@@ -52,6 +54,12 @@ This project is **Source Available** under the [Dune Dashboard Source License (D
    .\setup.ps1
    ```
    This will install dependencies, configure your SSH key, and generate `settings.yaml`.
+
+   During setup you'll be prompted for:
+   - **VM External IP** — the IP you SSH into (e.g., `65.21.198.100`)
+   - **Host External IP** — the public IP for SSL certificate SANs (e.g., `65.21.198.107`)
+   - **Let's Encrypt** — optionally set up a publicly trusted SSL cert with auto-renewal via certbot
+   - **Firewall rules** — only prompted if no `DuneDashboard` rule exists yet
 
 2. **Start Dashboard**
    ```powershell
@@ -89,6 +97,8 @@ During setup, answer **y** to "Enable remote access?" to:
 - Auto-generate SSL certificates for HTTPS
 - Enable secure remote connections via `https://YOUR_IP:5050`
 
+**Firewall rules** are created automatically during setup. On subsequent starts, `start.ps1`/`start.sh` will only prompt if the `DuneDashboard` rule is missing.
+
 You can also manually edit `settings.yaml` later:
 ```yaml
 dashboard:
@@ -96,6 +106,67 @@ dashboard:
   ssl_cert: ssl/cert.pem
   ssl_key: ssl/key.pem
 ```
+
+### Let's Encrypt (Publicly Trusted Certs)
+
+During setup, answer **y** when asked to enable Let's Encrypt. The setup script will:
+1. Install `certbot` (tries `winget`, `pip`, and `python -m` fallbacks on Windows)
+2. Run `certbot certonly --standalone` to validate your domain
+3. Configure auto-renewal via Windows Scheduled Task or Linux cron
+4. Point the dashboard to the Let's Encrypt cert paths
+
+> **Note**: Port 80 must be free during certbot validation. The dashboard's HTTP redirect server will release port 80 temporarily for this.
+
+### Local CA Utilities (Windows)
+
+Two helper scripts are included for managing the self-signed CA:
+- **`install-ca-cert.bat`** — Installs the local CA (`ssl/ca.pem`) into Windows Trusted Root store. Run as Administrator. Removes browser warnings.
+- **`clean-ca-certs.bat`** — Removes the dashboard CA from Windows Trusted Root store. Run as Administrator.
+
+### SSL Configuration
+
+The dashboard supports both self-signed and CA-signed certificates.
+
+**Local CA (auto-generated during setup):**
+- A local Certificate Authority (`ssl/ca.pem`) is created during setup
+- Server certificates are signed by this CA
+- Server certs include SAN for the server IP + `127.0.0.1` + `localhost`
+- Valid for 365 days
+
+**Remove browser warnings (Windows):**
+1. Run `install-ca-cert.bat` as Administrator
+2. Restart your browser
+3. Access `https://localhost:5050` — no more warnings
+
+**Remove browser warnings (Linux):**
+```bash
+sudo cp ssl/ca.pem /usr/local/share/ca-certificates/dune-dashboard-ca.crt
+sudo update-ca-certificates
+```
+
+**Let's Encrypt or custom CA:**
+```yaml
+dashboard:
+  host: 0.0.0.0
+  ssl_cert: /etc/letsencrypt/live/yourdomain.com/fullchain.pem
+  ssl_key: /etc/letsencrypt/live/yourdomain.com/privkey.pem
+```
+
+When SSL is enabled:
+- Session cookies are marked `Secure` (sent only over HTTPS)
+- HTTP-to-HTTPS redirect runs on port+1 (e.g., `http://localhost:5051` → `https://localhost:5050`)
+- Certificate expiry is checked at startup (warning if < 30 days)
+
+**Regenerate certificates:**
+Delete `ssl/cert.pem`, `ssl/key.pem`, and `ssl/ca*.pem`, then re-run setup.
+
+### Auto-Renewal
+
+SSL certificates are automatically regenerated when they approach expiry:
+- A background thread checks the certificate every 24 hours (configurable)
+- If the certificate expires within 30 days (configurable), a new one is generated
+- The server does **not** need to restart — Flask-SocketIO picks up the new cert on the next connection
+- Configure thresholds in `settings.yaml` under the `ssl:` section
 
 ## Project Structure
 

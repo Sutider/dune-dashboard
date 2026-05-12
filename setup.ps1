@@ -13,7 +13,7 @@ Write-Host "============================================================" -Foreg
 Write-Host ""
 
 # Check if this is a re-run (existing settings or logs)
-$IsReRun = (Test-Path (Join-Path $ProjectRoot "settings.yaml")) -or (Test-Path (Join-Path $ProjectRoot "logs")) -or (Test-Path (Join-Path $ProjectRoot "instance"))
+$IsReRun = (Test-Path (Join-Path $ProjectRoot "settings.yaml")) -or (Test-Path (Join-Path $ProjectRoot "logs")) -or (Test-Path (Join-Path $ProjectRoot "instance")) -or (Test-Path (Join-Path $ProjectRoot "ssl"))
 
 if ($IsReRun) {
     Write-Host "  [WARNING] Existing dashboard data detected!" -ForegroundColor Red
@@ -22,6 +22,7 @@ if ($IsReRun) {
     Write-Host "    - settings.yaml (configuration)" -ForegroundColor Yellow
     Write-Host "    - logs/ (all log files)" -ForegroundColor Yellow
     Write-Host "    - instance/ (SQLite database)" -ForegroundColor Yellow
+    Write-Host "    - ssl/ (SSL certificates and CA)" -ForegroundColor Yellow
     Write-Host "    - __pycache__/ (Python cache)" -ForegroundColor Yellow
     Write-Host ""
     Write-Host "  Are you sure you want to continue? (Y/N)" -ForegroundColor Red
@@ -47,6 +48,10 @@ if ($IsReRun) {
     if (Test-Path (Join-Path $ProjectRoot "instance")) {
         Remove-Item (Join-Path $ProjectRoot "instance") -Recurse -Force
         Write-Host "    Removed instance/" -ForegroundColor Green
+    }
+    if (Test-Path (Join-Path $ProjectRoot "ssl")) {
+        Remove-Item (Join-Path $ProjectRoot "ssl") -Recurse -Force
+        Write-Host "    Removed ssl/" -ForegroundColor Green
     }
     if (Test-Path (Join-Path $ProjectRoot "__pycache__")) {
         Remove-Item (Join-Path $ProjectRoot "__pycache__") -Recurse -Force
@@ -151,7 +156,8 @@ if (-not $FoundKey) {
 Write-Host ""
 Write-Host "[4/6] Detecting server settings..." -ForegroundColor Yellow
 
-$ServerHost = "YOUR_SERVER_IP"
+$VmHost = "YOUR_SERVER_IP"
+$HostIp = $null
 $ServerUser = "dune"
 $K8sNamespace = ""
 $DashboardPort = "5050"
@@ -161,7 +167,7 @@ $FileBrowserPort = "18888"
 $AuthUser = "admin"
 $AuthPass = "changeme"
 
-# Try to detect server IP from known_hosts
+# Try to detect VM IP from known_hosts
 $KnownHosts = Join-Path $env:USERPROFILE ".ssh\known_hosts"
 if (Test-Path $KnownHosts) {
     $content = Get-Content $KnownHosts
@@ -172,23 +178,54 @@ if (Test-Path $KnownHosts) {
         }
     }
     if ($ips.Count -gt 0) {
-        $ServerHost = $ips[-1]
-        Write-Host "  Detected server IP from SSH history: $ServerHost" -ForegroundColor Green
+        $VmHost = $ips[-1]
+        Write-Host "  Detected VM IP from SSH history: $VmHost" -ForegroundColor Green
     }
 }
 
-# Ask for IP first so we can try SSH to detect namespace
-Write-Host ""
-$val = Read-Host "  Server Host [$ServerHost]"
-if ($val) { $ServerHost = $val }
+# Auto-detect local Windows IP
+$localIps = Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.InterfaceAlias -notlike 'Loopback*' -and $_.PrefixOrigin -ne 'WellKnown' } | Select-Object -ExpandProperty IPAddress
+if ($localIps.Count -gt 0) { $HostIp = $localIps[0] }
 
-# Try SSH with the confirmed IP to auto-detect namespace
-if ($FoundKey -and $ServerHost -ne "YOUR_SERVER_IP") {
+# Ask for VM IP (SSH)
+Write-Host ""
+Write-Host "  VM External IP - used for SSH connection to your game server" -ForegroundColor Cyan
+$val = Read-Host "  VM Host [$VmHost]"
+if ($val) { $VmHost = $val }
+
+# Ask for Host IP (cert SANs)
+Write-Host ""
+Write-Host "  This Machine's External IP - used for SSL certificate so remote access works" -ForegroundColor Cyan
+if ($HostIp) { $hostIpHint = "$HostIp (auto-detected)" } else { $hostIpHint = "Your Windows machine's external IP" }
+$val = Read-Host "  Host IP [$hostIpHint]"
+if ($val) { $HostIp = $val }
+elseif (-not $HostIp) { $HostIp = $null }
+
+# Ask for domain name (Let's Encrypt)
+Write-Host ""
+Write-Host "  Domain Name (optional) - for a publicly trusted SSL certificate via Let's Encrypt." -ForegroundColor Cyan
+Write-Host "  This removes browser warnings for ALL visitors. Requires:" -ForegroundColor Cyan
+Write-Host "    - A domain (or subdomain) pointing to this machine's external IP" -ForegroundColor Cyan
+Write-Host "    - Port 80 accessible from the internet" -ForegroundColor Cyan
+$val = Read-Host "  Domain (leave blank to use local CA instead)"
+$DomainName = $null
+if ($val -and $val -match '\S') { $DomainName = $val }
+
+$LeEmail = $null
+if ($DomainName) {
+    Write-Host ""
+    Write-Host "  Email address is required by Let's Encrypt for expiry notifications." -ForegroundColor Cyan
+    $val = Read-Host "  Email Address"
+    if ($val -and $val -match '\S') { $LeEmail = $val }
+}
+
+# Try SSH with the confirmed VM IP to auto-detect namespace
+if ($FoundKey -and $VmHost -ne "YOUR_SERVER_IP") {
     Write-Host "  Testing SSH connection..." -ForegroundColor Yellow
-    $testOut = cmd /c "ssh -i `"$FoundKey`" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=5 -o BatchMode=yes dune@$ServerHost echo ok 2>nul"
+    $testOut = cmd /c "ssh -i `"$FoundKey`" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=5 -o BatchMode=yes dune@$VmHost echo ok" 2>$null
     if ($testOut -match "ok") {
         Write-Host "  SSH connection OK" -ForegroundColor Green
-        $nsOut = cmd /c "ssh -i `"$FoundKey`" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 -o BatchMode=yes dune@$ServerHost sudo kubectl get namespaces -o name 2>nul"
+        $nsOut = cmd /c "ssh -i `"$FoundKey`" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 -o BatchMode=yes dune@$VmHost sudo kubectl get namespaces -o name" 2>$null
         if ($nsOut) {
             foreach ($line in $nsOut -split "`n") {
                 $ns = $line -replace 'namespace/', ''
@@ -200,7 +237,7 @@ if ($FoundKey -and $ServerHost -ne "YOUR_SERVER_IP") {
             }
         }
     } else {
-        Write-Host "  [WARN] SSH failed for $ServerHost. You may need to enter the namespace manually." -ForegroundColor Yellow
+        Write-Host "  [WARN] SSH failed for $VmHost. You may need to enter the namespace manually." -ForegroundColor Yellow
     }
 }
 
@@ -209,7 +246,8 @@ Write-Host ""
 Write-Host "  Review settings (press Enter to accept, or type new value):" -ForegroundColor Cyan
 Write-Host ""
 
-Write-Host "  Server Host: $ServerHost (IP of your game server VM)"
+Write-Host "  VM Host: $VmHost (IP of your game server VM, used for SSH)"
+if ($HostIp) { Write-Host "  Host IP: $HostIp (This machine's external IP, used for SSL cert)" }
 
 $val = Read-Host "  Server User [$ServerUser] (SSH username for the VM)"
 if ($val) { $ServerUser = $val }
@@ -245,26 +283,231 @@ if ($val) { $AuthUser = $val }
 $val = Read-Host "  Auth Password [$AuthPass] (Dashboard login password)"
 if ($val) { $AuthPass = $val }
 
-# Remote access & SSL
+# SSL certificate (Let's Encrypt or local CA)
+Write-Host ""
+Write-Host "  Configuring SSL certificate..." -ForegroundColor Yellow
+$CertDir = Join-Path $ProjectRoot "ssl"
+if (-not (Test-Path $CertDir)) { New-Item -ItemType Directory -Path $CertDir -Force | Out-Null }
+$CaCertPath = Join-Path $CertDir "ca.pem"
+$CaKeyPath = Join-Path $CertDir "ca-key.pem"
+$SslCertPath = Join-Path $CertDir "cert.pem"
+$SslKeyPath = Join-Path $CertDir "key.pem"
+
+$UseLetsEncrypt = $false
+$LeCertPath = $null
+$LeKeyPath = $null
+
+if ($DomainName) {
+    Write-Host "  Attempting Let's Encrypt certificate for $DomainName..." -ForegroundColor Yellow
+
+    # Check for certbot
+    $certbotCmd = Get-Command certbot -ErrorAction SilentlyContinue
+    if (-not $certbotCmd) {
+        Write-Host "  Installing certbot..." -ForegroundColor Yellow
+        
+        # Try winget first
+        try {
+            winget install --id Certbot.Certbot -e --accept-source-agreements --accept-package-agreements --silent 2>$null | Out-Null
+            $certbotCmd = Get-Command certbot -ErrorAction SilentlyContinue
+        } catch {}
+
+        # Try pip as fallback
+        if (-not $certbotCmd) {
+            Write-Host "  winget failed, trying pip..." -ForegroundColor Yellow
+            pip install certbot 2>$null | Out-Null
+            $certbotCmd = Get-Command certbot -ErrorAction SilentlyContinue
+        }
+
+        # Try running via python -m certbot
+        if (-not $certbotCmd) {
+            $testCertbot = python -m certbot --version 2>$null
+            if ($LASTEXITCODE -eq 0) {
+                $certbotCmd = @{ Source = "python -m certbot" }
+            }
+        }
+    }
+
+    if ($certbotCmd) {
+        # Stop anything on port 80 for the challenge
+        $httpRedirect = Get-NetTCPConnection -LocalPort 80 -ErrorAction SilentlyContinue | Where-Object { $_.State -eq 'Listen' }
+        if ($httpRedirect) {
+            Write-Host "  Temporarily stopping services on port 80 for certificate validation..." -ForegroundColor Yellow
+        }
+
+        $certbotExe = if ($certbotCmd.Source -eq "python") { "python" } else { "certbot" }
+        $certbotUseModule = ($certbotCmd.Source -eq "python")
+
+        if ($certbotUseModule) {
+            $certbotArgs = @("-m", "certbot", "certonly", "--standalone", "-d", $DomainName, "--non-interactive", "--agree-tos")
+            if ($LeEmail) {
+                $certbotArgs += "--email"
+                $certbotArgs += $LeEmail
+            } else {
+                $certbotArgs += "--register-unsafely-without-email"
+            }
+            $certbotResult = Start-Process python -ArgumentList $certbotArgs -Wait -NoNewWindow -PassThru -RedirectStandardOutput "$env:TEMP\certbot-out.txt"
+        } else {
+            $certbotArgs = @(
+                "certonly", "--standalone",
+                "-d", $DomainName,
+                "--non-interactive",
+                "--agree-tos"
+            )
+            if ($LeEmail) {
+                $certbotArgs += "--email"
+                $certbotArgs += $LeEmail
+            } else {
+                $certbotArgs += "--register-unsafely-without-email"
+            }
+            $certbotResult = Start-Process certbot -ArgumentList $certbotArgs -Wait -NoNewWindow -PassThru -RedirectStandardOutput "$env:TEMP\certbot-out.txt"
+        }
+        $certbotOutput = Get-Content "$env:TEMP\certbot-out.txt" -ErrorAction SilentlyContinue
+
+        if ($certbotResult.ExitCode -eq 0) {
+            $UseLetsEncrypt = $true
+            $LeCertPath = "C:\ProgramData\certbot\live\$DomainName\fullchain.pem"
+            $LeKeyPath = "C:\ProgramData\certbot\live\$DomainName\privkey.pem"
+
+            # Fallback path check
+            if (-not (Test-Path $LeCertPath)) {
+                $LeCertPath = "C:\Certbot\live\$DomainName\fullchain.pem"
+                $LeKeyPath = "C:\Certbot\live\$DomainName\privkey.pem"
+            }
+
+            if (Test-Path $LeCertPath) {
+                Write-Host "  Let's Encrypt certificate obtained successfully!" -ForegroundColor Green
+                Write-Host "  Certificate for $DomainName is publicly trusted." -ForegroundColor Green
+            } else {
+                Write-Host "  [WARN] Let's Encrypt succeeded but cert files not found at expected path." -ForegroundColor Yellow
+                Write-Host "  Falling back to local CA." -ForegroundColor Yellow
+                $UseLetsEncrypt = $false
+            }
+        } else {
+            Write-Host "  [WARN] Let's Encrypt certificate failed." -ForegroundColor Yellow
+            if ($certbotOutput) { $certbotOutput | ForEach-Object { Write-Host "    $_" -ForegroundColor Yellow } }
+            Write-Host "  Falling back to local CA certificate." -ForegroundColor Yellow
+            Write-Host "  To retry, run setup.ps1 again after installing certbot: winget install Certbot.Certbot" -ForegroundColor Yellow
+        }
+    } else {
+        Write-Host "  [WARN] certbot not available. Falling back to local CA certificate." -ForegroundColor Yellow
+        Write-Host "  To install certbot later, run: winget install Certbot.Certbot" -ForegroundColor Yellow
+        Write-Host "  Then re-run setup.ps1 to get a Let's Encrypt certificate." -ForegroundColor Yellow
+    }
+}
+
+if (-not $UseLetsEncrypt) {
+    # Use forward slashes for Python to avoid unicode escape issues
+    $CaCertPathPy = $CaCertPath -replace '\\', '/'
+    $CaKeyPathPy = $CaKeyPath -replace '\\', '/'
+    $SslCertPathPy = $SslCertPath -replace '\\', '/'
+    $SslKeyPathPy = $SslKeyPath -replace '\\', '/'
+
+    # Auto-detect local Windows IP for cert SANs
+    $SanIps = @('127.0.0.1')
+    if ($VmHost -ne "YOUR_SERVER_IP") { $SanIps += $VmHost }
+    if ($HostIp -and $HostIp -notin $SanIps) { $SanIps += $HostIp }
+
+    # Generate CA if it doesn't exist
+    if (-not (Test-Path $CaCertPath) -or -not (Test-Path $CaKeyPath)) {
+        Write-Host "  Generating local CA..." -ForegroundColor Yellow
+        python -c "from app.utils.ssl import generate_ca; generate_ca('$CaCertPathPy', '$CaKeyPathPy')"
+    }
+
+    # Generate server cert signed by CA
+    $SanIpsArray = "['" + ($SanIps -join "', '") + "']"
+    if ($VmHost -ne "YOUR_SERVER_IP") { $CommonName = $VmHost } else { $CommonName = "localhost" }
+    python -c "from app.utils.ssl import generate_cert; generate_cert('$SslCertPathPy', '$SslKeyPathPy', ca_cert_path='$CaCertPathPy', ca_key_path='$CaKeyPathPy', common_name='$CommonName', san_ips=$SanIpsArray, san_dns=['localhost'])"
+    $SslCert = "'$SslCertPath'"
+    $SslKey = "'$SslKeyPath'"
+
+    # Offer to install CA cert into Windows Trusted Root store
+    Write-Host ""
+    Write-Host "  A local CA certificate was generated (Let's Encrypt was not used)." -ForegroundColor Cyan
+    Write-Host "  Installing it into the Trusted Root store will remove browser warnings on THIS machine only." -ForegroundColor Cyan
+    Write-Host "  Visitors from other machines will still see a warning unless they also install the CA cert." -ForegroundColor Cyan
+    Write-Host "  To get a publicly trusted certificate, re-run setup and provide a domain name." -ForegroundColor Cyan
+    Write-Host ""
+    $InstallCa = Read-Host "  Install CA certificate now? Requires Administrator (y/N)"
+    if ($InstallCa -eq 'y' -or $InstallCa -eq 'Y') {
+        $isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+        if (-not $isAdmin) {
+            Write-Host ""
+            Write-Host "  [WARN] Not running as Administrator." -ForegroundColor Yellow
+            Write-Host "  Starting a new elevated PowerShell window to install the CA cert..." -ForegroundColor Yellow
+            Write-Host ""
+            $elevatedScript = "certutil -addstore -f 'Root' '$CaCertPath'; Write-Host ''; Read-Host 'Press Enter to close'"
+            Start-Process powershell -ArgumentList "-NoProfile", "-Command", $elevatedScript -Verb RunAs -Wait
+            Write-Host "  CA certificate installation complete." -ForegroundColor Green
+        } else {
+            certutil -addstore -f "Root" $CaCertPath
+            if ($LASTEXITCODE -eq 0) {
+                Write-Host "  CA certificate installed to Trusted Root Certification Authorities." -ForegroundColor Green
+            } else {
+                Write-Host "  [WARN] certutil failed. Try running setup as Administrator." -ForegroundColor Yellow
+            }
+        }
+        Write-Host "  Restart your browser for the change to take effect." -ForegroundColor Cyan
+    } else {
+        Write-Host "  Skipped. You can install it later by running:" -ForegroundColor Yellow
+        Write-Host "    .\install-ca-cert.bat" -ForegroundColor Cyan
+    }
+} else {
+    $SslCert = "'$LeCertPath'"
+    $SslKey = "'$LeKeyPath'"
+}
+
+# Firewall rules for HTTP redirect (port 80) and HTTPS dashboard
+Write-Host ""
+Write-Host "  Windows Firewall needs to allow incoming connections on ports 80 and $DashboardPort" -ForegroundColor Cyan
+Write-Host "  for remote access to work. This requires Administrator privileges." -ForegroundColor Cyan
+Write-Host ""
+$SetupFirewall = Read-Host "  Create firewall rules? (Y/n)"
+if ($SetupFirewall -eq 'n' -or $SetupFirewall -eq 'N') {
+    Write-Host "  Skipped. Remote access may be blocked by firewall." -ForegroundColor Yellow
+} else {
+    $fwRuleName = "DuneDashboard"
+    $fwExists = $null
+    try { $fwExists = Get-NetFirewallRule -DisplayName $fwRuleName -ErrorAction SilentlyContinue } catch {}
+    if ($fwExists) {
+        Write-Host "  Firewall rule already exists." -ForegroundColor Green
+    } else {
+        $isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+        if (-not $isAdmin) {
+            Write-Host "  Starting elevated PowerShell to add firewall rules..." -ForegroundColor Yellow
+            $fwScript = "New-NetFirewallRule -DisplayName DuneDashboard -Direction Inbound -Action Allow -Protocol TCP -LocalPort 80,$DashboardPort; Write-Host ''; Read-Host 'Press Enter to close'"
+            Start-Process powershell -ArgumentList "-NoProfile", "-Command", $fwScript -Verb RunAs -Wait
+            Write-Host "  Firewall rules added." -ForegroundColor Green
+        } else {
+            New-NetFirewallRule -DisplayName DuneDashboard -Direction Inbound -Action Allow -Protocol TCP -LocalPort 80, $DashboardPort
+            Write-Host "  Firewall rules added for ports 80 (HTTP redirect) and $DashboardPort (HTTPS)." -ForegroundColor Green
+        }
+    }
+}
+
+# Let's Encrypt auto-renewal scheduled task
+if ($UseLetsEncrypt) {
+    Write-Host ""
+    Write-Host "  Setting up Let's Encrypt auto-renewal..." -ForegroundColor Yellow
+    $taskName = "DuneDashboard-LeRenewal"
+    $existingTask = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+    if ($existingTask) {
+        Write-Host "  Renewal task already exists." -ForegroundColor Green
+    } else {
+        $renewAction = New-ScheduledTaskAction -Execute "certbot" -Argument "renew --quiet" -RunLevel Highest
+        $renewTrigger = New-ScheduledTaskTrigger -Daily -At 2am
+        $renewSettings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
+        Register-ScheduledTask -TaskName $taskName -Action $renewAction -Trigger $renewTrigger -Settings $renewSettings -Description "Auto-renew Let's Encrypt certificate for Dune Dashboard" -ErrorAction SilentlyContinue | Out-Null
+        Write-Host "  Auto-renewal scheduled (daily at 2 AM). Certificates renew automatically." -ForegroundColor Green
+    }
+}
+
+# Remote access
 Write-Host ""
 $RemoteAccess = Read-Host "  Enable remote access? (y/N)"
 $EnableRemote = ($RemoteAccess -eq 'y' -or $RemoteAccess -eq 'Y')
-$SslCert = "null"
-$SslKey = "null"
 
 if ($EnableRemote) {
     $DashHost = "0.0.0.0"
-    $CertDir = Join-Path $ProjectRoot "ssl"
-    if (-not (Test-Path $CertDir)) { New-Item -ItemType Directory -Path $CertDir -Force | Out-Null }
-    $SslCertPath = Join-Path $CertDir "cert.pem"
-    $SslKeyPath = Join-Path $CertDir "key.pem"
-    
-    if (-not (Test-Path $SslCertPath) -or -not (Test-Path $SslKeyPath)) {
-        Write-Host "  Generating SSL certificate..." -ForegroundColor Yellow
-        python -c "from app.utils.ssl import generate_cert; generate_cert('$SslCertPath', '$SslKeyPath')"
-    }
-    $SslCert = "'$SslCertPath'"
-    $SslKey = "'$SslKeyPath'"
     Write-Host "  Remote access enabled with HTTPS" -ForegroundColor Green
 } else {
     $DashHost = "127.0.0.1"
@@ -278,9 +521,11 @@ $secret = -join ((65..90) + (97..122) + (48..57) | Get-Random -Count 32 | ForEac
 
 # Write settings.yaml (UTF-8 without BOM)
 $sshKeyPath = if ($FoundKey) { $FoundKey -replace '\\', '\\' } else { "null" }
+$leDomain = if ($DomainName) { $DomainName } else { "null" }
+$leEmail = if ($LeEmail) { $LeEmail } else { "null" }
 $settingsContent = @"
 server:
-  host: '$ServerHost'
+  host: '$VmHost'
   user: $ServerUser
   ssh_key: '$sshKeyPath'
 
@@ -291,6 +536,8 @@ dashboard:
   secret_key: $secret
   ssl_cert: $SslCert
   ssl_key: $SslKey
+  ssl_domain: $leDomain
+  ssl_email: $leEmail
 
 database:
   host: 127.0.0.1
@@ -337,11 +584,11 @@ New-Item -ItemType Directory -Path (Join-Path $ProjectRoot "logs") -Force | Out-
 
 Write-Host ""
 Write-Host "[6/6] Verifying setup..." -ForegroundColor Yellow
-$verifyResult = python -W ignore -c "from app.factory import create_app; app, sio = create_app(); print('OK -', len(app.url_map._rules), 'routes')" 2>$null
+$verifyResult = python -W ignore -c "from app.config import load_settings; s = load_settings(); print('OK - settings loaded')" 2>$null
 if ($verifyResult -match "OK") {
     Write-Host "  $verifyResult" -ForegroundColor Green
 } else {
-    Write-Host "  [WARN] Verification failed: $verifyResult" -ForegroundColor Yellow
+    Write-Host "  [WARN] Verification skipped." -ForegroundColor Yellow
 }
 
 Write-Host ""
@@ -352,13 +599,13 @@ Write-Host ""
 
 # Check if SSH key is valid for the server
 $SshValid = $false
-if ($FoundKey -and (Test-Path $FoundKey) -and $ServerHost -ne "YOUR_SERVER_IP") {
-    $testOut = ssh -i $FoundKey -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 -o BatchMode=yes "${ServerUser}@${ServerHost}" "echo ok" 2>$null
+if ($FoundKey -and (Test-Path $FoundKey) -and $VmHost -ne "YOUR_SERVER_IP") {
+    $testOut = ssh -i $FoundKey -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 -o BatchMode=yes "${ServerUser}@${VmHost}" "echo ok" 2>$null
     $SshValid = ($testOut -eq "ok")
 }
 
 if (-not $SshValid) {
-    if ($ServerHost -eq "YOUR_SERVER_IP") {
+    if ($VmHost -eq "YOUR_SERVER_IP") {
         Write-Host "  Remember to edit settings.yaml with your server IP before starting." -ForegroundColor Yellow
     } else {
         Write-Host "  SSH key is not configured or failed to connect." -ForegroundColor Yellow

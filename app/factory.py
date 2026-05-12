@@ -4,6 +4,7 @@ import os
 import sys
 import logging
 import logging.handlers
+import threading
 from flask import Flask, request
 from flask_socketio import SocketIO
 from flask_talisman import Talisman
@@ -39,8 +40,16 @@ def create_app(settings_path=None):
     app.config['SESSION_COOKIE_HTTPONLY'] = True
     app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 
+    ssl_enabled = bool(
+        settings['dashboard'].get('ssl_cert')
+        and settings['dashboard'].get('ssl_key')
+        and settings['dashboard']['ssl_cert'] != 'null'
+        and settings['dashboard']['ssl_key'] != 'null'
+    )
+    app.config['SESSION_COOKIE_SECURE'] = ssl_enabled
+
     if not settings['dashboard']['debug']:
-        Talisman(app, content_security_policy=None, force_https=False)
+        Talisman(app, content_security_policy=None, force_https=ssl_enabled)
 
     _setup_logging(settings)
 
@@ -113,6 +122,87 @@ def create_app(settings_path=None):
                 settings['kubernetes']['namespace'] = k8s_service.namespace
         except Exception as e:
             logging.warning(f"Could not auto-detect K8s namespace: {e}")
+
+    # Check SSL certificate expiry and start background monitor
+    if ssl_enabled:
+        try:
+            from app.utils.ssl import check_cert_expiry, generate_cert
+            cert_path = str(settings['dashboard']['ssl_cert']).strip("'\"")
+            key_path = str(settings['dashboard']['ssl_key']).strip("'\"")
+            is_expiring, days_remaining, msg = check_cert_expiry(cert_path)
+            if is_expiring:
+                logging.warning(f"SSL: {msg}")
+            else:
+                logging.info(f"SSL: {msg}")
+
+            def _cert_monitor():
+                """Background thread that checks and regenerates expiring SSL certs."""
+                import time
+                check_interval = settings.get('ssl', {}).get('check_interval_hours', 24) * 3600
+                renewal_days = settings.get('ssl', {}).get('renewal_days_before_expiry', 30)
+                server_ip = settings['server'].get('host', '')
+                ssl_dir = os.path.dirname(cert_path)
+                ca_cert = os.path.join(ssl_dir, 'ca.pem')
+                ca_key = os.path.join(ssl_dir, 'ca-key.pem')
+                ca_available = os.path.exists(ca_cert) and os.path.exists(ca_key)
+
+                is_le = 'letsencrypt' in cert_path.lower() or 'certbot' in cert_path.lower()
+                le_domain = settings['dashboard'].get('ssl_domain')
+
+                def _restart_app():
+                    import subprocess
+                    if os.name == 'nt':
+                        launcher = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'start.bat')
+                        if os.path.exists(launcher):
+                            subprocess.Popen(['cmd', '/c', 'start', '', launcher], shell=True)
+                        else:
+                            subprocess.Popen([sys.executable, os.path.join(os.path.dirname(os.path.dirname(__file__)), 'run.py')], creationflags=subprocess.CREATE_NEW_CONSOLE)
+                    else:
+                        launcher = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'start.sh')
+                        if os.path.exists(launcher):
+                            subprocess.Popen(['bash', launcher], start_new_session=True)
+                        else:
+                            subprocess.Popen([sys.executable, os.path.join(os.path.dirname(os.path.dirname(__file__)), 'run.py')], start_new_session=True)
+                    os._exit(0)
+
+                while True:
+                    time.sleep(check_interval)
+                    try:
+                        is_expiring, days_left, _ = check_cert_expiry(cert_path, warning_days=renewal_days)
+                        if is_expiring:
+                            if is_le and le_domain:
+                                logging.info(f"SSL: Let's Encrypt certificate expiring soon ({days_left} days). Running certbot renew...")
+                                import subprocess
+                                result = subprocess.run(['certbot', 'renew', '--quiet'], capture_output=True, timeout=300)
+                                if result.returncode == 0:
+                                    logging.info("SSL: Let's Encrypt certificate renewed. Restarting to apply...")
+                                    _restart_app()
+                                else:
+                                    logging.error(f"SSL: certbot renew failed: {result.stderr.decode()}")
+                            elif ca_available:
+                                logging.info(f"SSL: Certificate expiring soon ({days_left} days). Regenerating...")
+                                san_ips = [server_ip, '127.0.0.1'] if server_ip else ['127.0.0.1']
+                                generate_cert(
+                                    cert_path=cert_path,
+                                    key_path=key_path,
+                                    common_name=server_ip or 'localhost',
+                                    san_ips=san_ips,
+                                    san_dns=['localhost'],
+                                    ca_cert_path=ca_cert,
+                                    ca_key_path=ca_key,
+                                )
+                                logging.info("SSL: Certificate regenerated. Restarting to apply...")
+                                _restart_app()
+                            else:
+                                logging.warning("SSL: Certificate expiring but no CA key available. Cannot regenerate.")
+                    except Exception as e:
+                        logging.error(f"SSL: Background cert check failed: {e}")
+
+            monitor_thread = threading.Thread(target=_cert_monitor, daemon=True)
+            monitor_thread.start()
+            logging.info("SSL: Background certificate monitor started")
+        except Exception as e:
+            logging.debug(f"Could not initialize SSL cert monitor: {e}")
 
     app.dune_settings = settings
     app.dune_services = services
