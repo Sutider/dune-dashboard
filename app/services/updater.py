@@ -61,25 +61,27 @@ class UpdateService:
     def check_for_updates(self):
         """Check GitHub for new commits."""
         try:
-            # Fetch remote VERSION file
-            req = urllib.request.Request(f"https://raw.githubusercontent.com/{GITHUB_REPO}/main/VERSION")
+            # Fetch latest commit SHA from GitHub API
+            req = urllib.request.Request(f"{GITHUB_API}/commits/main")
+            req.add_header('Accept', 'application/vnd.github.v3+json')
             req.add_header('User-Agent', 'DuneDashboard-UpdateChecker')
             with urllib.request.urlopen(req, timeout=10) as resp:
-                remote_version = resp.read().decode().strip()
+                data = json.loads(resp.read().decode())
+                remote_sha = data['sha'][:7]
 
             # Get current version from local VERSION file
             version_file = os.path.join(self.project_root, 'VERSION')
             if os.path.exists(version_file):
                 with open(version_file) as f:
-                    local_version = f.read().strip().replace('\r', '').replace('\n', '')
+                    local_sha = f.read().strip().replace('\r', '').replace('\n', '')[:7]
             else:
-                local_version = "unknown"
+                local_sha = "unknown"
 
-            self._latest_sha = remote_version
-            self._current_sha = local_version
-            self._update_available = remote_version != local_version and remote_version != ""
+            self._latest_sha = remote_sha
+            self._current_sha = local_sha
+            self._update_available = remote_sha != local_sha and remote_sha != ""
             self._last_check = time.time()
-            logger.info(f"Update check: {'available' if self._update_available else 'up to date'} (local={local_version}, remote={remote_version})")
+            logger.info(f"Update check: {'available' if self._update_available else 'up to date'} (local={local_sha}, remote={remote_sha})")
         except Exception as e:
             logger.debug(f"Update check error: {e}")
 
