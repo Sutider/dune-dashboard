@@ -69,13 +69,23 @@ class UpdateService:
                 data = json.loads(resp.read().decode())
                 remote_sha = data['sha'][:7]
 
-            # Get current version from local VERSION file
-            version_file = os.path.join(self.project_root, 'VERSION')
-            if os.path.exists(version_file):
-                with open(version_file) as f:
-                    local_sha = f.read().strip().replace('\r', '').replace('\n', '')[:7]
+            # Get current version from git if available, otherwise VERSION file
+            git_dir = os.path.join(self.project_root, '.git')
+            if os.path.isdir(git_dir):
+                try:
+                    local_sha = subprocess.check_output(
+                        ['git', 'rev-parse', 'HEAD'],
+                        cwd=self.project_root, stderr=subprocess.DEVNULL
+                    ).decode().strip()[:7]
+                except Exception:
+                    local_sha = "unknown"
             else:
-                local_sha = "unknown"
+                version_file = os.path.join(self.project_root, 'VERSION')
+                if os.path.exists(version_file):
+                    with open(version_file) as f:
+                        local_sha = f.read().strip().replace('\r', '').replace('\n', '')[:7]
+                else:
+                    local_sha = "unknown"
 
             self._latest_sha = remote_sha
             self._current_sha = local_sha
