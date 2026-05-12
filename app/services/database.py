@@ -1,6 +1,7 @@
 """Database service - connection pool and query helpers"""
 
 import logging
+import time
 import psycopg2
 import psycopg2.extras
 import psycopg2.pool
@@ -17,16 +18,23 @@ class DatabaseService:
 
     def init_pool(self):
         if self.pool is None:
-            try:
-                self.pool = psycopg2.pool.ThreadedConnectionPool(
-                    minconn=self.min_conn,
-                    maxconn=self.max_conn,
-                    **self.db_config
-                )
-                logger.info("Database connection pool initialized")
-            except Exception as e:
-                logger.error(f"Failed to initialize database pool: {e}")
-                self.pool = None
+            # Retry up to 10 times with 2s delays (20s total) to handle startup race conditions
+            for attempt in range(10):
+                try:
+                    self.pool = psycopg2.pool.ThreadedConnectionPool(
+                        minconn=self.min_conn,
+                        maxconn=self.max_conn,
+                        **self.db_config
+                    )
+                    logger.info("Database connection pool initialized")
+                    return self.pool
+                except Exception as e:
+                    if attempt < 9:
+                        logger.warning(f"DB pool attempt {attempt + 1}/10 failed, retrying in 2s: {e}")
+                        time.sleep(2)
+                    else:
+                        logger.error(f"Failed to initialize database pool after 10 attempts: {e}")
+                        self.pool = None
         return self.pool
 
     def get_connection(self):
