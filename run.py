@@ -11,6 +11,9 @@ from app.factory import create_app
 app, socketio = create_app()
 
 if __name__ == '__main__':
+    import logging
+    logging.getLogger('werkzeug').setLevel(logging.ERROR)
+
     settings = app.dune_settings
     host = settings['dashboard']['host']
     port = settings['dashboard']['port']
@@ -20,4 +23,4 @@ if __name__ == '__main__':
     print(f"  http://{host}:{port}")
     print(f"  Debug: {debug}\n")
 
-    socketio.run(app, host=host, port=port, debug=debug)
+    socketio.run(app, host=host, port=port, debug=debug, log_output=False)
