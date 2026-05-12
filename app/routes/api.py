@@ -726,3 +726,17 @@ def register_api_routes(app, services, settings):
             updater._update_available = True
             return jsonify({'success': True, 'message': 'Update banner triggered'})
         return jsonify({'success': False, 'error': 'Updater not available'})
+
+    @app.route('/api/update/check', methods=['POST'])
+    def api_update_check():
+        """Force a fresh check against GitHub."""
+        updater = services.get('updater')
+        if not updater:
+            return jsonify({'success': False, 'error': 'Updater not available'})
+        updater.check_for_updates()
+        return jsonify({
+            'available': updater.update_available,
+            'status': updater.update_status,
+            'local_sha': updater._current_sha,
+            'remote_sha': updater._latest_sha,
+        })

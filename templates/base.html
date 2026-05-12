@@ -57,7 +57,7 @@
         btn.textContent = 'Checking...';
         btn.disabled = true;
         try {
-            const resp = await fetch('/api/update/status');
+            const resp = await fetch('/api/update/check', { method: 'POST' });
             const data = await resp.json();
             if (data.available) {
                 document.getElementById('update-banner').style.display = 'flex';
