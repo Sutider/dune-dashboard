@@ -130,7 +130,7 @@ FILEBROWSER_PORT="18888"
 AUTH_USER="admin"
 AUTH_PASS="changeme"
 
-if [ -n "$FOUND_KEY" ]; then
+if [ -n "$FOUND_KEY" ] && [ "$SERVER_HOST" != "YOUR_SERVER_IP" ]; then
     if ssh -i "$FOUND_KEY" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 -o BatchMode=yes "dune@$SERVER_HOST" "echo ok" &>/dev/null; then
         echo "  SSH connection OK"
         NS=$(ssh -i "$FOUND_KEY" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 -o BatchMode=yes "dune@$SERVER_HOST" "sudo kubectl get namespaces -o name" 2>/dev/null | grep 'funcom-seabass-' | head -1 | sed 's|namespace/||')
@@ -242,14 +242,18 @@ echo ""
 
 # Check SSH validity
 SSH_VALID=false
-if [ -n "$FOUND_KEY" ] && [ -f "$FOUND_KEY" ]; then
+if [ -n "$FOUND_KEY" ] && [ -f "$FOUND_KEY" ] && [ "$SERVER_HOST" != "YOUR_SERVER_IP" ]; then
     if ssh -i "$FOUND_KEY" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 -o BatchMode=yes "${SERVER_USER}@${SERVER_HOST}" "echo ok" &>/dev/null; then
         SSH_VALID=true
     fi
 fi
 
 if [ "$SSH_VALID" = false ]; then
-    echo "  SSH key is not configured or failed to connect."
+    if [ "$SERVER_HOST" = "YOUR_SERVER_IP" ]; then
+        echo "  Remember to edit settings.yaml with your server IP before starting."
+    else
+        echo "  SSH key is not configured or failed to connect."
+    fi
     echo "  Edit settings.yaml and set ssh_key to your key path."
     echo ""
     echo "  Then start the dashboard with:"

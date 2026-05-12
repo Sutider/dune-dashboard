@@ -161,7 +161,7 @@ $FileBrowserPort = "18888"
 $AuthUser = "admin"
 $AuthPass = "changeme"
 
-if ($FoundKey) {
+if ($FoundKey -and $ServerHost -ne "YOUR_SERVER_IP") {
     # Test SSH
     $testOut = ssh -i $FoundKey -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 -o BatchMode=yes "dune@$ServerHost" "echo ok" 2>$null
     if ($testOut -eq "ok") {
@@ -299,16 +299,17 @@ Write-Host ""
 
 # Check if SSH key is valid for the server
 $SshValid = $false
-if ($FoundKey -and (Test-Path $FoundKey)) {
+if ($FoundKey -and (Test-Path $FoundKey) -and $ServerHost -ne "YOUR_SERVER_IP") {
     $testOut = ssh -i $FoundKey -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 -o BatchMode=yes "${ServerUser}@${ServerHost}" "echo ok" 2>$null
     $SshValid = ($testOut -eq "ok")
 }
 
 if (-not $SshValid) {
-    Write-Host "  SSH key is not configured or failed to connect." -ForegroundColor Yellow
-    Write-Host "  Run setup-ssh-key.ps1 first to configure SSH access:" -ForegroundColor Yellow
-    Write-Host ""
-    Write-Host "    .\setup-ssh-key.ps1" -ForegroundColor Cyan
+    if ($ServerHost -eq "YOUR_SERVER_IP") {
+        Write-Host "  Remember to edit settings.yaml with your server IP before starting." -ForegroundColor Yellow
+    } else {
+        Write-Host "  SSH key is not configured or failed to connect." -ForegroundColor Yellow
+    }
     Write-Host ""
     Write-Host "  Then start the dashboard with:" -ForegroundColor Yellow
     Write-Host ""
