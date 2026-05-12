@@ -61,22 +61,25 @@ class UpdateService:
     def check_for_updates(self):
         """Check GitHub for new commits."""
         try:
-            req = urllib.request.Request(f"{GITHUB_API}/branches/main")
-            req.add_header('Accept', 'application/vnd.github.v3+json')
+            # Fetch remote VERSION file
+            req = urllib.request.Request(f"https://raw.githubusercontent.com/{GITHUB_REPO}/main/VERSION")
             req.add_header('User-Agent', 'DuneDashboard-UpdateChecker')
             with urllib.request.urlopen(req, timeout=10) as resp:
-                data = json.loads(resp.read().decode())
-                self._latest_sha = data['commit']['sha']
+                remote_version = resp.read().decode().strip()
 
-            # Get current SHA from VERSION file (works for zip downloads)
+            # Get current version from local VERSION file
             version_file = os.path.join(self.project_root, 'VERSION')
             if os.path.exists(version_file):
                 with open(version_file) as f:
-                    self._current_sha = f.read().strip()
+                    local_version = f.read().strip()
+            else:
+                local_version = "unknown"
 
-            self._update_available = self._latest_sha != self._current_sha and self._latest_sha[:7] != self._current_sha[:7]
+            self._latest_sha = remote_version
+            self._current_sha = local_version
+            self._update_available = remote_version != local_version
             self._last_check = time.time()
-            logger.info(f"Update check: {'available' if self._update_available else 'up to date'} (local={self._current_sha}, remote={self._latest_sha})")
+            logger.info(f"Update check: {'available' if self._update_available else 'up to date'} (local={local_version}, remote={remote_version})")
         except Exception as e:
             logger.debug(f"Update check error: {e}")
 
@@ -161,7 +164,7 @@ class UpdateService:
             # Cleanup temp
             shutil.rmtree(temp_dir, ignore_errors=True)
 
-            # Update VERSION file to match new commit
+            # Update VERSION file to match new version
             version_file = os.path.join(self.project_root, 'VERSION')
             with open(version_file, 'w') as f:
                 f.write(self._latest_sha + '\n')
