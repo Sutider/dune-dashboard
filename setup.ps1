@@ -183,9 +183,13 @@ if (Test-Path $KnownHosts) {
     }
 }
 
-# Auto-detect local Windows IP
-$localIps = Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.InterfaceAlias -notlike 'Loopback*' -and $_.PrefixOrigin -ne 'WellKnown' } | Select-Object -ExpandProperty IPAddress
-if ($localIps.Count -gt 0) { $HostIp = $localIps[0] }
+# Auto-detect external IP (try external service first, then local interfaces)
+try {
+    $HostIp = (Invoke-WebRequest -Uri "https://api.ipify.org" -UseBasicParsing -TimeoutSec 5).Content.Trim()
+} catch {
+    $localIps = Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.InterfaceAlias -notlike 'Loopback*' -and $_.PrefixOrigin -ne 'WellKnown' } | Select-Object -ExpandProperty IPAddress
+    if ($localIps.Count -gt 0) { $HostIp = $localIps[0] }
+}
 
 # Ask for VM IP (SSH)
 Write-Host ""
