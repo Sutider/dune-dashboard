@@ -45,8 +45,8 @@ DEFAULTS = {
         'port': 18888,
     },
     'firewall': {
-        'block_filebrowser': True,
-        'block_director': True,
+        'block_filebrowser': False,
+        'block_director': False,
         'block_postgres': True,
     },
     'cache': {

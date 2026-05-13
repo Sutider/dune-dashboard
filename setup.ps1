@@ -526,16 +526,23 @@ Write-Host ""
 Write-Host "[SECURITY] Firewall Hardening" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "  Your game server has services exposed to the internet without authentication." -ForegroundColor Yellow
-Write-Host "  This is a SECURITY RISK - these services have been targeted by automated attacks." -ForegroundColor Yellow
+Write-Host "  This is a SECURITY RISK - these services are vulnerable to automated attacks." -ForegroundColor Yellow
+Write-Host "  PostgreSQL was ALREADY exploited by cryptocurrency mining malware." -ForegroundColor Red
 Write-Host ""
 Write-Host "  Recommended: Block these ports so only localhost/VPN can reach them:" -ForegroundColor Cyan
 Write-Host ""
-Write-Host "  [1] File Browser (port 18888)     - No authentication, exposes server files" -ForegroundColor Cyan
-Write-Host "  [2] Battlegroup Director (port 31820) - No authentication, exposes server API" -ForegroundColor Cyan
-Write-Host "  [3] PostgreSQL (port 15432)       - Default credentials (postgres/postgres)" -ForegroundColor Cyan
-Write-Host "                                      REQUIRES BLOCKING - was exploited by malware" -ForegroundColor Red
+Write-Host "  [1] PostgreSQL (port 15432)   - VULNERABLE (ALREADY EXPLOITED - default postgres/postgres)" -ForegroundColor Red
+Write-Host "  [2] File Browser (port 18888) - VULNERABLE (no auth - exposes server files)" -ForegroundColor Yellow
+Write-Host "  [3] Battlegroup Director (port 31820) - VULNERABLE (no auth - exposes server API)" -ForegroundColor Yellow
 Write-Host ""
 Write-Host "  You can change these anytime from the Server page in the dashboard." -ForegroundColor Cyan
+Write-Host ""
+Write-Host "  Block PostgreSQL (15432)? (Y/n)" -ForegroundColor Cyan
+$val = Read-Host "  Block PostgreSQL (15432)? (Y/n)"
+$BlockPostgres = -not ($val -eq 'n' -or $val -eq 'N')
+if ($BlockPostgres) { Write-Host "  Will block port 15432 (PostgreSQL)" -ForegroundColor Green }
+else { Write-Host "  Skipped - port 15432 will remain open to the internet" -ForegroundColor Red }
+
 Write-Host ""
 Write-Host "  Block File Browser (18888)? (Y/n)" -ForegroundColor Cyan
 $val = Read-Host "  Block File Browser (18888)? (Y/n)"
@@ -549,15 +556,6 @@ $val = Read-Host "  Block Battlegroup Director (31820)? (Y/n)"
 $BlockDirector = -not ($val -eq 'n' -or $val -eq 'N')
 if ($BlockDirector) { Write-Host "  Will block port 31820 (Director)" -ForegroundColor Green }
 else { Write-Host "  Skipped - port 31820 will remain open to the internet" -ForegroundColor Yellow }
-
-Write-Host ""
-Write-Host "  Block PostgreSQL (15432)? (Y/n)" -ForegroundColor Cyan
-Write-Host "  WARNING: This port was exploited by a cryptocurrency miner attack." -ForegroundColor Red
-Write-Host "  Default credentials postgres/postgres are a known target." -ForegroundColor Red
-$val = Read-Host "  Block PostgreSQL (15432)? (Y/n)"
-$BlockPostgres = -not ($val -eq 'n' -or $val -eq 'N')
-if ($BlockPostgres) { Write-Host "  Will block port 15432 (PostgreSQL)" -ForegroundColor Green }
-else { Write-Host "  Skipped - port 15432 will remain open to the internet" -ForegroundColor Yellow }
 
 Write-Host ""
 Write-Host "[5/6] Saving settings..." -ForegroundColor Yellow
@@ -699,22 +697,21 @@ if (-not $SshValid) {
         Write-Host "  Applying firewall rules to block ports: $($portsToBlock -join ', ')..." -ForegroundColor Yellow
 
         $tmpFwScript = Join-Path $env:TEMP ([System.IO.Path]::GetRandomFileName() + ".sh")
-        $fwContent = @"
-for PORT in $($portsToBlock -join ' '); do
-    if iptables -C INPUT -p tcp --dport `$PORT -s 127.0.0.1 -j ACCEPT 2>/dev/null; then
-        echo "Port `$PORT already blocked"
-    else
-        iptables -I INPUT 1 -p tcp --dport `$PORT -s 127.0.0.1 -j ACCEPT
-        iptables -I INPUT 2 -p tcp --dport `$PORT -j DROP
-        echo "Port `$PORT blocked"
-    fi
-done
-echo "FIREWALL_DONE"
-"@
-        $fwContent | Out-File -FilePath $tmpFwScript -Encoding utf8 -Force
-        $fwOut = ssh -i $FoundKey -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15 "${ServerUser}@${VmHost}" "sudo bash -s" < $tmpFwScript 2>&1
+        $fwContent = "for PORT in $($portsToBlock -join ' '); do`n"
+        $fwContent += "  if iptables -C INPUT -p tcp --dport `$PORT -s 127.0.0.1 -j ACCEPT 2>/dev/null; then`n"
+        $fwContent += "    echo 'Port `$PORT already blocked'`n"
+        $fwContent += "  else`n"
+        $fwContent += "    iptables -I INPUT 1 -p tcp --dport `$PORT -s 127.0.0.1 -j ACCEPT`n"
+        $fwContent += "    iptables -I INPUT 2 -p tcp --dport `$PORT -j DROP`n"
+        $fwContent += "    echo 'Port `$PORT blocked'`n"
+        $fwContent += "  fi`n"
+        $fwContent += "done`n"
+        $fwContent += "echo 'FIREWALL_DONE'`n"
+        $fwContent | Out-File -FilePath $tmpFwScript -Encoding ascii -NoNewline -Force
+        $bytes = [System.IO.File]::ReadAllBytes($tmpFwScript)
         Remove-Item $tmpFwScript -Force -ErrorAction SilentlyContinue
-
+        $b64 = [Convert]::ToBase64String($bytes)
+        $fwOut = ssh -i $FoundKey -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15 "${ServerUser}@${VmHost}" "echo '$b64' | base64 -d > /tmp/fw.sh && sudo bash /tmp/fw.sh && rm /tmp/fw.sh" 2>&1
         if ($fwOut -match "FIREWALL_DONE") {
             Write-Host "  Firewall rules applied successfully!" -ForegroundColor Green
         } else {
