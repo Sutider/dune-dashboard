@@ -111,7 +111,10 @@ class UpdateService:
                     with open(version_file) as f:
                         local_sha = f.read().strip().replace('\r', '').replace('\n', '')[:7]
                 else:
-                    local_sha = "unknown"
+                    # First run after ZIP download: record current version
+                    local_sha = remote_sha
+                    with open(version_file, 'w') as f:
+                        f.write(remote_sha + '\n')
 
             self._latest_sha = remote_sha
             self._current_sha = local_sha
