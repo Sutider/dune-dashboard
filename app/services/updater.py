@@ -45,13 +45,23 @@ class UpdateService:
         self._current_branch = self._detect_branch()
 
     def _detect_branch(self):
-        """Detect the current git branch."""
+        """Detect the current git branch or ZIP branch from folder name."""
         try:
             branch = subprocess.check_output(
                 ['git', 'rev-parse', '--abbrev-ref', 'HEAD'],
                 cwd=self.project_root, stderr=subprocess.DEVNULL
             ).decode().strip()
-            return branch if branch else 'main'
+            if branch:
+                return branch
+        except Exception:
+            pass
+
+        folder_name = os.path.basename(self.project_root).lower()
+        if 'nightly' in folder_name:
+            return 'nightly'
+        if 'beta' in folder_name:
+            return 'beta'
+        return 'main'
         except Exception:
             return 'main'
 
