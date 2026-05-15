@@ -8,7 +8,30 @@
 </div>
 
 <div id="loading-banner" class="loading-banner">Loading Director data...</div>
-<div id="error-banner" class="error-banner danger" style="display:none;"></div>
+<div id="error-banner" class="error-banner" style="display:none;"></div>
+<div id="unavailable-banner" class="unavailable-banner" style="display:none;">
+    <div class="unavailable-icon">&#9888;</div>
+    <div class="unavailable-content">
+        <h3>Director Unavailable</h3>
+        <p id="unavailable-detail">The Battlegroup Director service is not responding.</p>
+        <div class="unavailable-hints">
+            <p><strong>Common causes:</strong></p>
+            <ul>
+                <li>BGD pod is still starting up (wait 1-2 minutes)</li>
+                <li>RabbitMQ authentication failure (check pod logs)</li>
+                <li>Database connectivity issue inside the cluster</li>
+                <li>BGD pod crashed (check with <code>kubectl get pods</code>)</li>
+            </ul>
+            <p><strong>Quick checks (SSH into server):</strong></p>
+            <ul>
+                <li><code>sudo kubectl get pods -n &lt;namespace&gt; | grep bgd</code></li>
+                <li><code>sudo kubectl logs -n &lt;namespace&gt; -l app=&lt;namespace&gt;-bgd-deploy --tail=50</code></li>
+                <li><code>sudo kubectl get pods -n &lt;namespace&gt; | grep mq</code></li>
+            </ul>
+        </div>
+        <button id="btn-retry-director" class="btn-retry">Retry</button>
+    </div>
+</div>
 
 <div id="director-content" style="display:none;">
 
@@ -101,6 +124,18 @@
 
 <style>
 .loading-banner { padding: 20px; text-align: center; color: var(--text-muted); font-size: 14px; }
+.error-banner { padding: 12px 16px; background: rgba(220, 38, 38, 0.15); border: 1px solid rgba(220, 38, 38, 0.4); border-left: 4px solid #dc2626; border-radius: 6px; color: var(--text); font-size: 13px; margin-bottom: 16px; }
+.unavailable-banner { padding: 20px; background: rgba(234, 179, 8, 0.1); border: 1px solid rgba(234, 179, 8, 0.4); border-left: 4px solid #eab308; border-radius: 8px; color: var(--text); text-align: center; margin-bottom: 16px; }
+.unavailable-icon { font-size: 48px; color: #eab308; margin-bottom: 12px; }
+.unavailable-content h3 { margin: 0 0 8px; font-size: 18px; color: var(--text); }
+.unavailable-content > p { margin: 0 0 16px; color: var(--text-light); font-size: 14px; }
+.unavailable-hints { text-align: left; background: var(--bg); border-radius: 6px; padding: 16px; margin: 0 auto 16px; max-width: 600px; font-size: 13px; }
+.unavailable-hints p { margin: 8px 0 4px; }
+.unavailable-hints ul { margin: 4px 0 12px; padding-left: 20px; }
+.unavailable-hints li { margin: 4px 0; color: var(--text-light); }
+.unavailable-hints code { background: var(--card-bg); padding: 2px 6px; border-radius: 3px; font-size: 12px; color: var(--text); }
+.btn-retry { padding: 8px 24px; background: #eab308; color: #1a1a1a; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 600; }
+.btn-retry:hover { background: #ca8a04; }
 .mb-3 { margin-bottom: 16px; }
 .map-card { background: var(--card-bg); border-radius: 12px; box-shadow: var(--shadow); margin-bottom: 12px; overflow: hidden; }
 .map-header { padding: 10px 16px; background: var(--bg-hover); display: flex; justify-content: space-between; align-items: center; cursor: pointer; user-select: none; }
@@ -154,13 +189,27 @@ let charTransferData = null;
 async function loadDirector() {
     const banner = document.getElementById('loading-banner');
     const error = document.getElementById('error-banner');
+    const unavailable = document.getElementById('unavailable-banner');
     const content = document.getElementById('director-content');
     try {
         const [bgResp, ctResp] = await Promise.all([
             fetch('/api/director/battlegroup'),
             fetch('/api/director/character_transfer')
         ]);
-        if (!bgResp.ok) throw new Error('Failed to load battlegroup data');
+        if (!bgResp.ok) {
+            const errData = await bgResp.json().catch(() => null);
+            if (bgResp.status === 503 && errData && errData.detail) {
+                banner.style.display = 'none';
+                error.style.display = 'none';
+                content.style.display = 'none';
+                unavailable.style.display = 'block';
+                document.getElementById('unavailable-detail').textContent = errData.detail;
+                return;
+            }
+            throw new Error(errData?.error || 'Failed to load battlegroup data');
+        }
+        unavailable.style.display = 'none';
+        error.style.display = 'none';
         bgData = await bgResp.json();
         if (ctResp.ok) {
             charTransferData = await ctResp.json();
@@ -177,10 +226,17 @@ async function loadDirector() {
         }
     } catch (e) {
         banner.style.display = 'none';
+        unavailable.style.display = 'none';
         error.textContent = 'Error loading Director: ' + e.message;
         error.style.display = 'block';
     }
 }
+
+document.getElementById('btn-retry-director')?.addEventListener('click', () => {
+    document.getElementById('unavailable-banner').style.display = 'none';
+    document.getElementById('loading-banner').style.display = 'block';
+    loadDirector();
+});
 
 function updateStats() {
     const t = calcTotals();

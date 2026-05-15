@@ -334,12 +334,28 @@ print(s.get('dashboard', {}).get('port', 5050))
     # Summary
     echo "============================================================"
     if [ $issues -eq 0 ]; then
-        echo "  All checks passed! The dashboard should work."
+        echo "  All local checks passed!"
     else
-        echo "  Found $issues issue(s) that may prevent the dashboard from working."
+        echo "  Found $issues local issue(s) that may prevent the dashboard from working."
         echo "  Review the messages above for details on how to fix each issue."
     fi
     echo ""
+
+    # Server-side diagnostics
+    if [ -f "$settings_file" ]; then
+        server_host_check=$($PYTHON -c "
+import yaml
+with open('$settings_file') as f:
+    s = yaml.safe_load(f) or {}
+print(s.get('server', {}).get('host', 'NOT SET'))
+" 2>/dev/null)
+        if [ "$server_host_check" != "NOT SET" ] && [ "$server_host_check" != "YOUR_SERVER_IP" ]; then
+            echo "  Running server-side diagnostics..."
+            echo ""
+            $PYTHON "$PROJECT_ROOT/scripts/diagnostic.py" "$settings_file"
+            echo ""
+        fi
+    fi
 
     # Offer port forward guide
     echo "  Would you like to see the Port Forwarding & Firewall guide? (y/N)"

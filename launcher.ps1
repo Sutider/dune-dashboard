@@ -380,12 +380,23 @@ print(json.dumps(s))
     # Summary
     Write-Host "============================================================" -ForegroundColor Cyan
     if ($issues -eq 0) {
-        Write-Host "  All checks passed! The dashboard should work." -ForegroundColor Green
+        Write-Host "  All local checks passed!" -ForegroundColor Green
     } else {
-        Write-Host "  Found $issues issue(s) that may prevent the dashboard from working." -ForegroundColor Yellow
+        Write-Host "  Found $issues local issue(s) that may prevent the dashboard from working." -ForegroundColor Yellow
         Write-Host "  Review the messages above for details on how to fix each issue." -ForegroundColor Yellow
     }
     Write-Host ""
+
+    # Server-side diagnostics
+    if ($settingsJson) {
+        $settings = $settingsJson | ConvertFrom-Json
+        if ($settings.server -and $settings.server.host -and $settings.server.host -ne 'YOUR_SERVER_IP') {
+            Write-Host "  Running server-side diagnostics..." -ForegroundColor Yellow
+            Write-Host ""
+            python (Join-Path $ProjectRoot "scripts\diagnostic.py") (Join-Path $ProjectRoot "settings.yaml")
+            Write-Host ""
+        }
+    }
 
     # Offer port forward guide
     Write-Host "  Would you like to see the Port Forwarding & Firewall guide? (y/N)" -ForegroundColor Cyan

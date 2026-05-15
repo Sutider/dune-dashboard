@@ -922,20 +922,28 @@ def register_api_routes(app, services, settings):
     def director_battlegroup():
         try:
             if not director_svc:
-                return jsonify({'success': False, 'error': 'Director service not available'}), 500
+                return jsonify({'success': False, 'error': 'Director service not available'}), 503
             logger.info("Director request: %s/v0/battlegroup", director_svc.base_url)
             data = director_svc.get_battlegroup()
             return data, 200, {'Content-Type': 'application/json'}
         except Exception as e:
+            error_msg = str(e)
             logger.error("Director battlegroup error: %s", e)
-            return jsonify({'success': False, 'error': str(e)}), 500
+            if 'refused' in error_msg.lower() or 'closed' in error_msg.lower() or 'aborted' in error_msg.lower():
+                return jsonify({
+                    'success': False,
+                    'error': 'Director unavailable',
+                    'detail': 'The Battlegroup Director service is not responding. This usually means the BGD pod is starting up or has crashed due to RabbitMQ/database connectivity issues.',
+                    'hint': 'Check the BGD pod logs on the server: sudo kubectl logs -n <namespace> -l app=<namespace>-bgd-deploy --tail=50'
+                }), 503
+            return jsonify({'success': False, 'error': error_msg}), 500
 
     @app.route('/api/director/update_config', methods=['POST'])
     @auth_req
     def director_update_config():
         try:
             if not director_svc:
-                return jsonify({'success': False, 'error': 'Director service not available'}), 500
+                return jsonify({'success': False, 'error': 'Director service not available'}), 503
             config = request.get_json()
             map_name = config.get('MapName', '')
             result = director_svc.update_server_config(config)
@@ -947,6 +955,8 @@ def register_api_routes(app, services, settings):
 
             return result, 200, {'Content-Type': 'application/json'}
         except Exception as e:
+            if 'refused' in str(e).lower() or 'closed' in str(e).lower() or 'aborted' in str(e).lower():
+                return jsonify({'success': False, 'error': 'Director unavailable. The BGD service is not responding.'}), 503
             return jsonify({'success': False, 'error': str(e)}), 500
 
     @app.route('/api/director/clear_config', methods=['POST'])
@@ -954,13 +964,15 @@ def register_api_routes(app, services, settings):
     def director_clear_config():
         try:
             if not director_svc:
-                return jsonify({'success': False, 'error': 'Director service not available'}), 500
+                return jsonify({'success': False, 'error': 'Director service not available'}), 503
             map_name = request.get_data(as_text=True).strip()
             result = director_svc.clear_map_config(map_name)
             if map_name:
                 director_svc.update_ini_section(map_name, {}, remove_section=True)
             return result, 200, {'Content-Type': 'application/json'}
         except Exception as e:
+            if 'refused' in str(e).lower() or 'closed' in str(e).lower() or 'aborted' in str(e).lower():
+                return jsonify({'success': False, 'error': 'Director unavailable. The BGD service is not responding.'}), 503
             return jsonify({'success': False, 'error': str(e)}), 500
 
     @app.route('/api/director/character_transfer', methods=['GET'])
@@ -968,10 +980,12 @@ def register_api_routes(app, services, settings):
     def director_character_transfer_get():
         try:
             if not director_svc:
-                return jsonify({'success': False, 'error': 'Director service not available'}), 500
+                return jsonify({'success': False, 'error': 'Director service not available'}), 503
             data = director_svc.fetch_character_transfer_rules()
             return data, 200, {'Content-Type': 'application/json'}
         except Exception as e:
+            if 'refused' in str(e).lower() or 'closed' in str(e).lower() or 'aborted' in str(e).lower():
+                return jsonify({'success': False, 'error': 'Director unavailable. The BGD service is not responding.'}), 503
             return jsonify({'success': False, 'error': str(e)}), 500
 
     @app.route('/api/director/character_transfer', methods=['POST'])
@@ -979,7 +993,7 @@ def register_api_routes(app, services, settings):
     def director_character_transfer_update():
         try:
             if not director_svc:
-                return jsonify({'success': False, 'error': 'Director service not available'}), 500
+                return jsonify({'success': False, 'error': 'Director service not available'}), 503
             config = request.get_json()
             result = director_svc.update_character_transfer(config)
 
@@ -989,6 +1003,8 @@ def register_api_routes(app, services, settings):
 
             return result, 200, {'Content-Type': 'application/json'}
         except Exception as e:
+            if 'refused' in str(e).lower() or 'closed' in str(e).lower() or 'aborted' in str(e).lower():
+                return jsonify({'success': False, 'error': 'Director unavailable. The BGD service is not responding.'}), 503
             return jsonify({'success': False, 'error': str(e)}), 500
 
     @app.route('/api/director/character_transfer_clear', methods=['POST'])
@@ -996,11 +1012,13 @@ def register_api_routes(app, services, settings):
     def director_character_transfer_clear():
         try:
             if not director_svc:
-                return jsonify({'success': False, 'error': 'Director service not available'}), 500
+                return jsonify({'success': False, 'error': 'Director service not available'}), 503
             result = director_svc.clear_character_transfer_overrides()
             director_svc.update_ini_section('CharacterTransfers', {}, remove_section=True)
             return result, 200, {'Content-Type': 'application/json'}
         except Exception as e:
+            if 'refused' in str(e).lower() or 'closed' in str(e).lower() or 'aborted' in str(e).lower():
+                return jsonify({'success': False, 'error': 'Director unavailable. The BGD service is not responding.'}), 503
             return jsonify({'success': False, 'error': str(e)}), 500
 
     # Update management
