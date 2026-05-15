@@ -51,28 +51,82 @@ function Test-Python {
     } catch {
         Write-Host "  Python: NOT FOUND" -ForegroundColor Red
         Write-Host ""
-        Write-Host "  Python is required but not found on your system." -ForegroundColor Red
-        Write-Host "  Please install Python 3.8 or later from https://www.python.org/downloads/" -ForegroundColor Yellow
+        Write-Host "  Python 3.8+ is required but not detected on your system." -ForegroundColor Yellow
         Write-Host ""
-        Write-Host "  During installation, make sure to check:" -ForegroundColor Yellow
-        Write-Host "    [x] Add Python to PATH" -ForegroundColor Yellow
-        Write-Host ""
-        return $false
+        $installPython = Read-Host "  Would you like to install Python automatically? (Y/n)"
+        if ($installPython -ne 'n' -and $installPython -ne 'N') {
+            Write-Host ""
+            Write-Host "  Installing Python via winget..." -ForegroundColor Yellow
+            try {
+                winget install Python.Python.3.11 -e --accept-package-agreements --accept-source-agreements --silent 2>$null | Out-Null
+                if ($LASTEXITCODE -eq 0) {
+                    Write-Host "  Python installed successfully." -ForegroundColor Green
+                    Write-Host "  Please restart your terminal and run the launcher again." -ForegroundColor Cyan
+                    return $false
+                }
+            } catch {}
+
+            Write-Host "  winget installation failed or unavailable." -ForegroundColor Yellow
+            Write-Host ""
+            Write-Host "  Please install Python 3.8+ manually:" -ForegroundColor Cyan
+            Write-Host "    1. Download from https://www.python.org/downloads/" -ForegroundColor White
+            Write-Host "    2. During installation, check: [x] Add Python to PATH" -ForegroundColor White
+            Write-Host "    3. Restart your terminal and run the launcher again." -ForegroundColor White
+            return $false
+        } else {
+            Write-Host ""
+            Write-Host "  Please install Python 3.8+ manually:" -ForegroundColor Cyan
+            Write-Host "    1. Download from https://www.python.org/downloads/" -ForegroundColor White
+            Write-Host "    2. During installation, check: [x] Add Python to PATH" -ForegroundColor White
+            Write-Host "    3. Restart your terminal and run the launcher again." -ForegroundColor White
+            return $false
+        }
     }
 }
 
 function Test-Dependencies {
     Write-Host "  Checking Python dependencies..." -ForegroundColor Yellow
+    $installed = @()
     $missing = @()
-    $required = @('flask', 'flask_socketio', 'yaml', 'flask_login', 'flask_wtf', 'flask_limiter', 'paramiko', 'argon2', 'cryptography')
+    $required = @(
+        @{ Name = 'flask'; Pkg = 'Flask' },
+        @{ Name = 'flask_socketio'; Pkg = 'Flask-SocketIO' },
+        @{ Name = 'socketio'; Pkg = 'python-socketio' },
+        @{ Name = 'psycopg2'; Pkg = 'psycopg2-binary' },
+        @{ Name = 'paramiko'; Pkg = 'paramiko' },
+        @{ Name = 'yaml'; Pkg = 'PyYAML' },
+        @{ Name = 'flask_login'; Pkg = 'Flask-Login' },
+        @{ Name = 'flask_wtf'; Pkg = 'Flask-WTF' },
+        @{ Name = 'flask_limiter'; Pkg = 'Flask-Limiter' },
+        @{ Name = 'cryptography'; Pkg = 'cryptography' },
+        @{ Name = 'argon2'; Pkg = 'argon2-cffi' }
+    )
     foreach ($mod in $required) {
-        $result = python -c "import $mod" 2>$null
-        if ($LASTEXITCODE -ne 0) {
-            $missing += $mod
+        $result = python -c "import $($mod.Name)" 2>$null
+        if ($LASTEXITCODE -eq 0) {
+            $installed += $mod.Pkg
+        } else {
+            $missing += $mod.Pkg
         }
     }
+
+    if ($installed.Count -gt 0) {
+        Write-Host "  Already installed ($($installed.Count)):" -ForegroundColor Green
+        foreach ($pkg in $installed) { Write-Host "    - $pkg" -ForegroundColor DarkGray }
+    }
+
     if ($missing.Count -gt 0) {
-        Write-Host "  Missing packages: $($missing -join ', ')" -ForegroundColor Yellow
+        Write-Host ""
+        Write-Host "  Missing packages ($($missing.Count)):" -ForegroundColor Yellow
+        foreach ($pkg in $missing) { Write-Host "    - $pkg" -ForegroundColor Yellow }
+        Write-Host ""
+        $installDeps = Read-Host "  Install missing dependencies? (Y/n)"
+        if ($installDeps -eq 'n' -or $installDeps -eq 'N') {
+            Write-Host ""
+            Write-Host "  Installation cancelled. Cannot continue without required packages." -ForegroundColor Red
+            return $false
+        }
+        Write-Host ""
         Write-Host "  Installing dependencies..." -ForegroundColor Yellow
         pip install -r (Join-Path $ProjectRoot "requirements.txt") --quiet
         if ($LASTEXITCODE -eq 0) {
@@ -83,7 +137,7 @@ function Test-Dependencies {
             return $false
         }
     } else {
-        Write-Host "  All dependencies installed." -ForegroundColor Green
+        Write-Host "  All dependencies are installed." -ForegroundColor Green
         return $true
     }
 }
@@ -584,18 +638,93 @@ function Run-Setup {
         $pythonVersion = python --version 2>&1
         Write-Host "  Found: $pythonVersion" -ForegroundColor Green
     } catch {
-        Write-Host "  [ERROR] Python not found. Install Python 3.8+ first." -ForegroundColor Red
-        return
+        Write-Host "  Python: NOT FOUND" -ForegroundColor Red
+        Write-Host ""
+        Write-Host "  Python 3.8+ is required but not detected on your system." -ForegroundColor Yellow
+        Write-Host ""
+        $installPython = Read-Host "  Would you like to install Python automatically? (Y/n)"
+        if ($installPython -ne 'n' -and $installPython -ne 'N') {
+            Write-Host ""
+            Write-Host "  Installing Python via winget..." -ForegroundColor Yellow
+            try {
+                winget install Python.Python.3.11 -e --accept-package-agreements --accept-source-agreements --silent 2>$null | Out-Null
+                if ($LASTEXITCODE -eq 0) {
+                    Write-Host "  Python installed successfully." -ForegroundColor Green
+                    Write-Host "  Please restart your terminal and run the launcher again." -ForegroundColor Cyan
+                    return
+                }
+            } catch {}
+
+            Write-Host "  winget installation failed or unavailable." -ForegroundColor Yellow
+            Write-Host ""
+            Write-Host "  Please install Python 3.8+ manually:" -ForegroundColor Cyan
+            Write-Host "    1. Download from https://www.python.org/downloads/" -ForegroundColor White
+            Write-Host "    2. During installation, check: [x] Add Python to PATH" -ForegroundColor White
+            Write-Host "    3. Restart your terminal and run the launcher again." -ForegroundColor White
+            return
+        } else {
+            Write-Host ""
+            Write-Host "  Please install Python 3.8+ manually:" -ForegroundColor Cyan
+            Write-Host "    1. Download from https://www.python.org/downloads/" -ForegroundColor White
+            Write-Host "    2. During installation, check: [x] Add Python to PATH" -ForegroundColor White
+            Write-Host "    3. Restart your terminal and run the launcher again." -ForegroundColor White
+            return
+        }
     }
 
     # Install dependencies
     Write-Host ""
-    Write-Host "[2/6] Installing dependencies..." -ForegroundColor Yellow
-    pip install -r (Join-Path $ProjectRoot "requirements.txt") --quiet
-    if ($LASTEXITCODE -eq 0) {
-        Write-Host "  Dependencies installed" -ForegroundColor Green
+    Write-Host "[2/6] Checking dependencies..." -ForegroundColor Yellow
+    $depInstalled = @()
+    $depMissing = @()
+    $depRequired = @(
+        @{ Name = 'flask'; Pkg = 'Flask' },
+        @{ Name = 'flask_socketio'; Pkg = 'Flask-SocketIO' },
+        @{ Name = 'socketio'; Pkg = 'python-socketio' },
+        @{ Name = 'psycopg2'; Pkg = 'psycopg2-binary' },
+        @{ Name = 'paramiko'; Pkg = 'paramiko' },
+        @{ Name = 'yaml'; Pkg = 'PyYAML' },
+        @{ Name = 'flask_login'; Pkg = 'Flask-Login' },
+        @{ Name = 'flask_wtf'; Pkg = 'Flask-WTF' },
+        @{ Name = 'flask_limiter'; Pkg = 'Flask-Limiter' },
+        @{ Name = 'cryptography'; Pkg = 'cryptography' },
+        @{ Name = 'argon2'; Pkg = 'argon2-cffi' }
+    )
+    foreach ($mod in $depRequired) {
+        $result = python -c "import $($mod.Name)" 2>$null
+        if ($LASTEXITCODE -eq 0) {
+            $depInstalled += $mod.Pkg
+        } else {
+            $depMissing += $mod.Pkg
+        }
+    }
+
+    if ($depInstalled.Count -gt 0) {
+        Write-Host "  Already installed ($($depInstalled.Count)):" -ForegroundColor Green
+        foreach ($pkg in $depInstalled) { Write-Host "    - $pkg" -ForegroundColor DarkGray }
+    }
+
+    if ($depMissing.Count -gt 0) {
+        Write-Host ""
+        Write-Host "  Missing packages ($($depMissing.Count)):" -ForegroundColor Yellow
+        foreach ($pkg in $depMissing) { Write-Host "    - $pkg" -ForegroundColor Yellow }
+        Write-Host ""
+        $installDeps = Read-Host "  Install missing dependencies? (Y/n)"
+        if ($installDeps -eq 'n' -or $installDeps -eq 'N') {
+            Write-Host ""
+            Write-Host "  Installation cancelled. Cannot continue without required packages." -ForegroundColor Red
+            return
+        }
+        Write-Host ""
+        Write-Host "  Installing dependencies..." -ForegroundColor Yellow
+        pip install -r (Join-Path $ProjectRoot "requirements.txt") --quiet
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "  Dependencies installed successfully." -ForegroundColor Green
+        } else {
+            Write-Host "  [WARN] Some packages may have failed to install." -ForegroundColor Yellow
+        }
     } else {
-        Write-Host "  [WARN] Some packages may have failed. Continuing..." -ForegroundColor Yellow
+        Write-Host "  All dependencies are installed." -ForegroundColor Green
     }
 
     # Configure SSH key
