@@ -386,10 +386,7 @@
     background: var(--primary-dark);
 }
 
-/* Dark theme dropdown - apply only when current theme is dark (based on dark bg) */
-[data-theme="harkonnen"] .theme-dropdown-content,
-[data-theme="spacing-guild"] .theme-dropdown-content,
-[data-theme="tleilax"] .theme-dropdown-content,
+/* Theme swatches */
 .theme-swatch {
     width: 20px;
     height: 20px;
