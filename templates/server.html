@@ -406,13 +406,17 @@ async function loadFwStatus() {
         const allPorts = [...(data.blocked || []), ...(data.available || [])];
         let html = '<table style="width:100%;font-size:13px;"><thead><tr><th>Service</th><th>Port</th><th>Status</th><th>Action</th></tr></thead><tbody>';
         for (const p of allPorts) {
-            const isBlocked = (data.blocked || []).some(b => b.port === p.port);
-            const rules = Object.values(data.iptables_rules || {}).filter(r => r.includes('dpt:' + p.port));
-            const statusText = isBlocked ? '<span style="color:#4ade80;font-weight:600;">Blocked</span>' : '<span style="color:#e74c3c;font-weight:600;">Open</span>';
-            const actionBtn = isBlocked
-                ? `<button class="fw-btn" data-port="${p.port}" data-action="unblock" style="padding:4px 12px;background:#e74c3c;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:12px;">Unblock</button>`
-                : `<button class="fw-btn" data-port="${p.port}" data-action="block" style="padding:4px 12px;background:#27ae60;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:12px;">Block</button>`;
-            html += `<tr><td style="padding:6px 0;">${p.name}</td><td style="font-family:monospace;">${p.port}</td><td>${statusText}</td><td>${actionBtn}</td></tr>`;
+            const portDisplay = p.port !== null && p.port !== undefined ? p.port : 'N/A';
+            const hasPort = p.port !== null && p.port !== undefined;
+            const isBlocked = hasPort && (data.blocked || []).some(b => b.port === p.port);
+            const rules = hasPort ? Object.values(data.iptables_rules || {}).filter(r => r.includes('dpt:' + p.port)) : [];
+            const statusText = !hasPort ? '<span style="color:var(--text-muted);font-style:italic;">Not running</span>' : (isBlocked ? '<span style="color:#4ade80;font-weight:600;">Blocked</span>' : '<span style="color:#e74c3c;font-weight:600;">Open</span>');
+            const actionBtn = !hasPort
+                ? '<span style="color:var(--text-muted);font-size:11px;">Start battlegroup to enable</span>'
+                : (isBlocked
+                    ? `<button class="fw-btn" data-port="${p.port}" data-action="unblock" style="padding:4px 12px;background:#e74c3c;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:12px;">Unblock</button>`
+                    : `<button class="fw-btn" data-port="${p.port}" data-action="block" style="padding:4px 12px;background:#27ae60;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:12px;">Block</button>`);
+            html += `<tr><td style="padding:6px 0;">${p.name}</td><td style="font-family:monospace;">${portDisplay}</td><td>${statusText}</td><td>${actionBtn}</td></tr>`;
         }
         html += '</tbody></table>';
         list.innerHTML = html;

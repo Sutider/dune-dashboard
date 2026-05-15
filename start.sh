@@ -452,13 +452,14 @@ if k and k != 'null':
     echo "============================================================"
     echo ""
 
-    # Kill existing SSH tunnels on the DB port
+    # Kill existing SSH tunnels on the DB/Director ports
     pkill -f "ssh.*-L.*${local_port}" 2>/dev/null || true
+    pkill -f "ssh.*-L.*${director_port}" 2>/dev/null || true
     sleep 1
 
     # [1/4] SSH Tunnel
     echo "[1/4] Starting SSH tunnel (localhost:$local_port -> VM)..."
-    ssh -i "$ssh_key_tmp" -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -L "${local_port}:localhost:${local_port}" -N "${ssh_user}@${server_host}" &
+    ssh -i "$ssh_key_tmp" -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -L "${local_port}:localhost:${local_port}" -L "${director_port}:localhost:${director_port}" -N "${ssh_user}@${server_host}" &
     ssh_tunnel_pid=$!
 
     connected=false
@@ -519,6 +520,17 @@ if k and k != 'null':
     ssh -i "$ssh_key_tmp" -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=30 "${ssh_user}@${server_host}" "nohup sudo kubectl port-forward -n ${namespace} svc/${db_svc} ${local_port}:${local_port} > /tmp/pf.log 2>&1 &" 2>/dev/null
 
     bgd_svc="${namespace}-bgd-svc"
+
+    # Check if BGD deployment is running, scale up if needed
+    bgd_deploy="${namespace}-bgd-deploy"
+    bgd_ready=$(ssh -i "$ssh_key_tmp" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 "${ssh_user}@${server_host}" "sudo kubectl get deployment $bgd_deploy -n $namespace -o jsonpath='{.status.readyReplicas}'" 2>/dev/null)
+    if [ -z "$bgd_ready" ] || [ "$bgd_ready" = "0" ]; then
+        echo "  BGD deployment is scaled down, starting..."
+        ssh -i "$ssh_key_tmp" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=30 "${ssh_user}@${server_host}" "sudo kubectl scale deployment $bgd_deploy -n $namespace --replicas=1" 2>/dev/null
+        echo "  Waiting for BGD pod to be ready..."
+        sleep 15
+    fi
+
     ssh -i "$ssh_key_tmp" -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=30 "${ssh_user}@${server_host}" "nohup sudo kubectl port-forward -n ${namespace} svc/${bgd_svc} ${director_port}:11717 > /tmp/director_pf.log 2>&1 &" 2>/dev/null
 
     sleep 3

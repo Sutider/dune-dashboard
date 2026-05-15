@@ -122,21 +122,48 @@ def register_api_routes(app, services, settings):
         return jsonify({'success': rc == 0, 'output': out + err if out or err else 'No output'})
 
     # Firewall management
+    def _get_bgd_nodeport():
+        """Resolve the current BGD service NodePort from K8s."""
+        ns = settings.get('kubernetes', {}).get('namespace', '')
+        if not ns:
+            return None
+        out, _, rc = k8s.run(f'get svc -n {ns} -o wide')
+        if rc != 0 or not out:
+            return None
+        for line in out.split('\n'):
+            if '-bgd-svc' in line and 'NodePort' in line:
+                parts = line.split()
+                for p in parts:
+                    if ':' in p and p[0].isdigit():
+                        port_str = p.split(':')[1].split('/')[0]
+                        try:
+                            return int(port_str)
+                        except ValueError:
+                            continue
+        return None
+
     @app.route('/server/firewall')
     @auth_req
     def firewall_status():
+        bgd_port = _get_bgd_nodeport()
         port_map = {
             'filebrowser': {'port': 18888, 'name': 'File Browser'},
-            'director': {'port': 31820, 'name': 'Battlegroup Director'},
             'postgres': {'port': 15432, 'name': 'PostgreSQL'},
         }
+        if bgd_port:
+            port_map['director'] = {'port': bgd_port, 'name': 'Battlegroup Director'}
+        else:
+            port_map['director'] = {'port': None, 'name': 'Battlegroup Director (not running)'}
 
-        out, _, _ = ssh.run('sudo iptables -L INPUT -n 2>/dev/null | grep -E "dpt:(18888|31820|15432)"; sudo iptables -L FORWARD -n 2>/dev/null | grep -E "dpt:(18888|31820|15432)"; sudo iptables -t mangle -L PREROUTING -n 2>/dev/null | grep -E "dpt:(18888|31820|15432)"', timeout=15)
+        active_ports = [str(p['port']) for p in port_map.values() if p['port']]
+        all_ports_re = '|'.join(active_ports) if active_ports else 'NONE'
+        out, _, _ = ssh.run(f'sudo iptables -L INPUT -n 2>/dev/null | grep -E "dpt:({all_ports_re})"; sudo iptables -L FORWARD -n 2>/dev/null | grep -E "dpt:({all_ports_re})"; sudo iptables -t mangle -L PREROUTING -n 2>/dev/null | grep -E "dpt:({all_ports_re})"', timeout=15)
 
         blocked_ports = set()
         rules = {}
+        port_strs = [str(p['port']) for p in port_map.values()]
         for line in out.split('\n'):
-            for port in ['18888', '31820', '15432']:
+            for port in port_strs:
                 if f'dpt:{port}' in line and 'DROP' in line:
                     blocked_ports.add(port)
                     rules[port] = line.strip()
@@ -162,8 +189,12 @@ def register_api_routes(app, services, settings):
     @limiter.limit("10 per hour")
     def firewall_block():
         port = request.form.get('port', type=int)
-        if port not in (18888, 31820, 15432):
-            return jsonify({'success': False, 'output': 'Invalid port'})
+        bgd_port = _get_bgd_nodeport()
+        allowed_ports = {18888, 15432}
+        if bgd_port:
+            allowed_ports.add(bgd_port)
+        if port not in allowed_ports:
+            return jsonify({'success': False, 'output': f'Invalid port. Allowed: {", ".join(str(p) for p in sorted(allowed_ports))}'})
 
         cmd = (
             f'sudo iptables -I INPUT 1 -p tcp --dport {port} -s 127.0.0.1 -j ACCEPT && '
@@ -177,7 +208,13 @@ def register_api_routes(app, services, settings):
         if rc != 0 and 'already exists' not in (out + err):
             return jsonify({'success': False, 'output': err})
 
-        port_key = {18888: 'block_filebrowser', 31820: 'block_director', 15432: 'block_postgres'}.get(port)
+        port_key = None
+        if port == 18888:
+            port_key = 'block_filebrowser'
+        elif port == 15432:
+            port_key = 'block_postgres'
+        elif port == bgd_port:
+            port_key = 'block_director'
         if port_key:
             settings.setdefault('firewall', {})[port_key] = True
             import yaml
@@ -198,8 +235,12 @@ def register_api_routes(app, services, settings):
     @limiter.limit("10 per hour")
     def firewall_unblock():
         port = request.form.get('port', type=int)
-        if port not in (18888, 31820, 15432):
-            return jsonify({'success': False, 'output': 'Invalid port'})
+        bgd_port = _get_bgd_nodeport()
+        allowed_ports = {18888, 15432}
+        if bgd_port:
+            allowed_ports.add(bgd_port)
+        if port not in allowed_ports:
+            return jsonify({'success': False, 'output': f'Invalid port. Allowed: {", ".join(str(p) for p in sorted(allowed_ports))}'})
 
         cmd = (
             f'sudo iptables -D INPUT -p tcp --dport {port} -j DROP 2>/dev/null; '
@@ -214,7 +255,13 @@ def register_api_routes(app, services, settings):
         combined = (out + err).strip()
         all_ok = 'DONE' in out or rc == 0
 
-        port_key = {18888: 'block_filebrowser', 31820: 'block_director', 15432: 'block_postgres'}.get(port)
+        port_key = None
+        if port == 18888:
+            port_key = 'block_filebrowser'
+        elif port == 15432:
+            port_key = 'block_postgres'
+        elif port == bgd_port:
+            port_key = 'block_director'
         if port_key:
             settings.setdefault('firewall', {})[port_key] = False
             import yaml

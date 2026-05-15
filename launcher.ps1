@@ -582,8 +582,11 @@ print(json.dumps(s))
     Write-Host "============================================================" -ForegroundColor Cyan
     Write-Host ""
 
-    # Kill existing SSH tunnels on the DB port
+    # Kill existing SSH tunnels on the DB/Director ports
     Get-NetTCPConnection -LocalPort $LocalPort -ErrorAction SilentlyContinue | ForEach-Object {
+        Get-Process -Id $_.OwningProcess -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -eq 'ssh' } | Stop-Process -Force -ErrorAction SilentlyContinue
+    }
+    Get-NetTCPConnection -LocalPort $DirectorPort -ErrorAction SilentlyContinue | ForEach-Object {
         Get-Process -Id $_.OwningProcess -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -eq 'ssh' } | Stop-Process -Force -ErrorAction SilentlyContinue
     }
     Start-Sleep 1
@@ -596,6 +599,7 @@ print(json.dumps(s))
         "-o", "ServerAliveInterval=30",
         "-o", "ServerAliveCountMax=3",
         "-L", "${LocalPort}:localhost:${LocalPort}",
+        "-L", "${DirectorPort}:localhost:${DirectorPort}",
         "-N", "${SSHUser}@${ServerHost}"
     )
     $sshTunnel = Start-Process ssh -ArgumentList $sshArgs -PassThru -WindowStyle Hidden
@@ -638,7 +642,7 @@ print(json.dumps(s))
         Stop-Process -Id $sshTunnel.Id -Force -ErrorAction SilentlyContinue
         return
     }
-    Write-Host "[OK]   SSH tunnel up on localhost:$LocalPort" -ForegroundColor Green
+    Write-Host "[OK]   SSH tunnel up on localhost:$LocalPort (DB) and localhost:$DirectorPort (Director)" -ForegroundColor Green
 
     # [2/4] DB Port-Forward
     Write-Host "[2/4] Starting DB port-forward on VM..." -ForegroundColor Yellow
@@ -679,6 +683,16 @@ print(json.dumps(s))
     if ($pfCheckBgd) {
         $bgdMatch = ($pfCheckBgd -split "`n") | Where-Object { $_ -match 'bgd.*svc' } | Select-Object -First 1
         if ($bgdMatch) { $bgdSvc = $bgdMatch -replace 'service/', '' }
+    }
+
+    # Check if BGD deployment is running, scale up if needed
+    $bgdDeploy = "${Namespace}-bgd-deploy"
+    $bgdReady = ssh -i $SSHKey -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 ${SSHUser}@${ServerHost} "sudo kubectl get deployment $bgdDeploy -n $Namespace -o jsonpath='{.status.readyReplicas}'" 2>$null
+    if (-not $bgdReady -or $bgdReady -eq '0' -or $bgdReady -eq '') {
+        Write-Host "  BGD deployment is scaled down, starting..." -ForegroundColor Yellow
+        $scaleOut = ssh -i $SSHKey -o StrictHostKeyChecking=accept-new -o ConnectTimeout=30 ${SSHUser}@${ServerHost} "sudo kubectl scale deployment $bgdDeploy -n $Namespace --replicas=1" 2>$null
+        Write-Host "  Waiting for BGD pod to be ready..." -ForegroundColor Yellow
+        Start-Sleep -Seconds 15
     }
 
     $directorRemotePort = 11717
@@ -722,7 +736,37 @@ print(json.dumps(s))
     }
     Write-Host "[OK]   Database connected" -ForegroundColor Green
 
-    # Firewall check for remote access
+    # [3/4] Director Check
+    Write-Host "[3/4] Checking director connection..." -ForegroundColor Yellow
+    $directorTest = $false
+    for ($i = 0; $i -lt 15; $i++) {
+        try {
+            $tcp = New-Object System.Net.Sockets.TcpClient
+            $tcp.Connect("127.0.0.1", $DirectorPort)
+            $tcp.Close()
+            $directorTest = $true
+            break
+        } catch {}
+        Start-Sleep -Seconds 1
+    }
+    if (-not $directorTest) {
+        Write-Host "[WARN] Director port-forward not responding on localhost:$DirectorPort" -ForegroundColor Yellow
+        Write-Host "       The Director tab may not work until the port-forward is active." -ForegroundColor Yellow
+        Write-Host ""
+        Write-Host "  Troubleshooting:" -ForegroundColor Cyan
+        Write-Host "    1. Check the port-forward log on the VM:" -ForegroundColor White
+        $directorPfLog = ssh -i $SSHKey -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 ${SSHUser}@${ServerHost} "cat /tmp/director_pf.log" 2>$null
+        if ($directorPfLog) { Write-Host "       $directorPfLog" -ForegroundColor Red }
+        else { Write-Host "       Log empty or unreadable." -ForegroundColor Yellow }
+        Write-Host ""
+        Write-Host "    2. Verify the BGD service exists on the VM:" -ForegroundColor White
+        Write-Host "       ssh -i $SSHKey ${SSHUser}@${ServerHost} 'sudo kubectl get svc -n $Namespace'" -ForegroundColor DarkGray
+        Write-Host ""
+    } else {
+        Write-Host "[OK]   Director port-forward connected" -ForegroundColor Green
+    }
+
+    # [4/4] Firewall check for remote access
     $fwRuleName = "DuneDashboard"
     $fwExists = $null
     try { $fwExists = Get-NetFirewallRule -DisplayName $fwRuleName -ErrorAction SilentlyContinue } catch {}
