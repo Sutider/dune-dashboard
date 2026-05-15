@@ -269,14 +269,6 @@
             Buildings ({{ buildings|length }})
         </label>
 
-        <h3>Filter by Map</h3>
-        <select class="map-select" id="map-filter" onchange="filterMap()">
-            <option value="">All Maps</option>
-            {% for map in maps %}
-            <option value="{{ map }}">{{ map }}</option>
-            {% endfor %}
-        </select>
-
         <h3>Players</h3>
         <div class="location-list" id="player-list">
             {% for p in players %}
@@ -329,9 +321,7 @@
             <div class="map-image-container">
                 <img src="{{ url_for('static', filename=map_image) }}" class="map-image" alt="Map">
 
-                {# Players #}
-                {% if show_players is not defined %}{% set show_players = true %}{% endif %}
-                {% if show_players %}
+                {# Players - only show if they have pixel coords #}
                 {% for p in players %}
                 {% if p.px is not none and p.py is not none %}
                 <div class="map-marker player" style="left:{{ p.px }}px;top:{{ p.py }}px;" title="{{ p.name }}">
@@ -339,11 +329,8 @@
                 </div>
                 {% endif %}
                 {% endfor %}
-                {% endif %}
 
                 {# Vehicles #}
-                {% if show_vehicles is not defined %}{% set show_vehicles = true %}{% endif %}
-                {% if show_vehicles %}
                 {% for v in vehicles %}
                 {% if v.px is not none and v.py is not none %}
                 <div class="map-marker vehicle" style="left:{{ v.px }}px;top:{{ v.py }}px;" title="{{ v.class }}">
@@ -351,11 +338,8 @@
                 </div>
                 {% endif %}
                 {% endfor %}
-                {% endif %}
 
                 {# Buildings #}
-                {% if show_buildings is not defined %}{% set show_buildings = true %}{% endif %}
-                {% if show_buildings %}
                 {% for b in buildings[:30] %}
                 {% if b.px is not none and b.py is not none %}
                 <div class="map-marker building" style="left:{{ b.px }}px;top:{{ b.py }}px;" title="{{ b.class }}">
@@ -363,34 +347,27 @@
                 </div>
                 {% endif %}
                 {% endfor %}
-                {% endif %}
             </div>
         </div>
         {% else %}
         <div class="map-placeholder">
             <div class="map-placeholder-icon">🗺️</div>
-            <h3>No Map Configured</h3>
-            <p>Configure a map in settings to display coordinates.</p>
+            <h3>No Map Available</h3>
+            <p>Map image not configured. Showing coordinate data in list view.</p>
             <div class="no-map-note">
-                <strong>Data available:</strong><br>
+                <strong>Available Data:</strong><br>
+                DeepDesert & HaggaBasin locations:<br>
                 Players: {{ players|length }}<br>
                 Vehicles: {{ vehicles|length }}<br>
                 Buildings: {{ buildings|length }}
             </div>
         </div>
         {% endif %}
-        <div id="selected-coords" style="display:none;margin-top:16px;">
-            <strong>Selected:</strong>
-            <div class="coord-display" id="coord-display"></div>
-        </div>
     </div>
 </div>
 
 <script>
-let currentFilter = '';
-
 function showCoords(el) {
-    const type = el.dataset.type;
     const name = el.dataset.name;
     const map = el.dataset.map;
     const x = parseFloat(el.dataset.x);
@@ -404,11 +381,6 @@ function showCoords(el) {
         `X: ${x.toFixed(2)} | Y: ${y.toFixed(2)} | Z: ${z.toFixed(2)}`;
 }
 
-function filterMap() {
-    currentFilter = document.getElementById('map-filter').value;
-    updateMap();
-}
-
 function updateMap() {
     const showPlayers = document.getElementById('show-players').checked;
     const showVehicles = document.getElementById('show-vehicles').checked;
@@ -416,13 +388,13 @@ function updateMap() {
 
     // Filter lists
     document.querySelectorAll('#player-list .location-item').forEach(el => {
-        el.style.display = (showPlayers && (!currentFilter || el.dataset.map === currentFilter)) ? 'flex' : 'none';
+        el.style.display = showPlayers ? 'flex' : 'none';
     });
     document.querySelectorAll('#vehicle-list .location-item').forEach(el => {
-        el.style.display = (showVehicles && (!currentFilter || el.dataset.map === currentFilter)) ? 'flex' : 'none';
+        el.style.display = showVehicles ? 'flex' : 'none';
     });
     document.querySelectorAll('#building-list .location-item').forEach(el => {
-        el.style.display = (showBuildings && (!currentFilter || el.dataset.map === currentFilter)) ? 'flex' : 'none';
+        el.style.display = showBuildings ? 'flex' : 'none';
     });
 }
 </script>

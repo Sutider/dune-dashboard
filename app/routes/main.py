@@ -470,21 +470,21 @@ def register_routes(app, services, settings):
                 ORDER BY a.map, ps.character_name
             """) or []
 
-            # Get vehicles with coordinates
+            # Get vehicles with coordinates (only DeepDesert and HaggaBasin)
             vehicles = db.query("""
                 SELECT v.id, a.map, a.transform, a.class
                 FROM dune.vehicles v
                 JOIN dune.actors a ON v.id = a.id
-                WHERE a.transform IS NOT NULL
+                WHERE a.transform IS NOT NULL AND a.map IN ('DeepDesert', 'HaggaBasin')
                 ORDER BY a.map, a.class
             """) or []
 
-            # Get buildings with coordinates
+            # Get buildings with coordinates (only DeepDesert and HaggaBasin)
             buildings = db.query("""
                 SELECT b.id, a.map, a.transform, a.class
                 FROM dune.buildings b
                 JOIN dune.actors a ON b.id = a.id
-                WHERE a.transform IS NOT NULL
+                WHERE a.transform IS NOT NULL AND a.map IN ('DeepDesert', 'HaggaBasin')
                 ORDER BY a.map
                 LIMIT 200
             """) or []
