@@ -382,6 +382,22 @@
     color: #fff;
 }
 
+/* Light themes: active state needs to be readable */
+[data-theme="default"] .theme-option.active,
+[data-theme="atreides"] .theme-option.active,
+[data-theme="fremen"] .theme-option.active,
+[data-theme="sardaukar"] .theme-option.active,
+[data-theme="mentat"] .theme-option.active,
+[data-theme="ordos"] .theme-option.active,
+[data-theme="ix"] .theme-option.active,
+[data-theme="choam"] .theme-option.active {
+    color: #fff;
+}
+
+[data-theme="bene-gesserit"] .theme-option.active {
+    color: #1a1a1a;
+}
+
 .theme-option.active:hover {
     background: var(--primary-dark);
 }
