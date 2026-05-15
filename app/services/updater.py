@@ -141,8 +141,9 @@ class UpdateService:
         self._update_status = "Downloading update..."
 
         try:
-            # Download latest zip
-            zip_url = f"https://github.com/{GITHUB_REPO}/archive/refs/heads/main.zip"
+            # Download latest zip from the detected branch
+            branch = self._current_branch
+            zip_url = f"https://github.com/{GITHUB_REPO}/archive/refs/heads/{branch}.zip"
             req = urllib.request.Request(zip_url)
             req.add_header('User-Agent', 'DuneDashboard-UpdateChecker')
             with urllib.request.urlopen(req, timeout=60) as resp:

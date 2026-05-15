@@ -70,6 +70,21 @@ def create_app(settings_path=None):
             response.headers['X-Content-Type-Options'] = 'nosniff'
             # XSS protection
             response.headers['X-XSS-Protection'] = '1; mode=block'
+            # Content Security Policy
+            response.headers['Content-Security-Policy'] = (
+                "default-src 'self'; "
+                "script-src 'self'; "
+                "style-src 'self' 'unsafe-inline'; "
+                "img-src 'self' data:; "
+                "connect-src 'self' ws: wss:; "
+                "frame-ancestors 'self'; "
+                "base-uri 'self'; "
+                "form-action 'self'"
+            )
+            # Referrer Policy - use strict-origin-when-cross-origin to allow CSRF checks
+            response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+            # Permissions Policy
+            response.headers['Permissions-Policy'] = 'geolocation=(), microphone=(), camera=()'
             return response
 
     _setup_logging(settings)
@@ -138,6 +153,7 @@ def create_app(settings_path=None):
         default_limits=["200 per day", "50 per hour"],
         storage_uri="memory://",
     )
+    app.limiter = limiter
 
     if settings['auth']['enabled']:
         init_auth(app, settings, limiter)

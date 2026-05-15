@@ -166,8 +166,8 @@ def load_settings(settings_path=None):
     else:
         logger.warning(f"Settings file not found at {settings_path}, using defaults")
 
-    # Auto-apply new defaults if missing
-    _apply_defaults_to_file(settings_path, DEFAULTS)
+    # Note: Runtime config migration moved to setup/update scripts
+    # _apply_defaults_to_file() removed to prevent runtime config mutation
 
     env_overrides = {}
 

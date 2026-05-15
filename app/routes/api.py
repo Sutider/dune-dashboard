@@ -2,6 +2,8 @@
 
 import json
 import logging
+import re
+import shlex
 from flask import Blueprint, request, jsonify
 from flask_login import login_required
 from flask_limiter import Limiter
@@ -9,6 +11,21 @@ from flask_limiter.util import get_remote_address
 from app.utils.constants import NAV_PAGES
 
 logger = logging.getLogger(__name__)
+
+K8S_NAME_RE = re.compile(r"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$")
+
+
+def require_k8s_name(value, label):
+    """Validate that a value is a valid Kubernetes resource name."""
+    value = str(value or "").strip()
+    if not value or not K8S_NAME_RE.fullmatch(value):
+        raise ValueError(f"Invalid {label}")
+    return value
+
+
+def quote_remote(value):
+    """Shell-quote a value for safe use in remote commands."""
+    return shlex.quote(str(value))
 
 
 def register_api_routes(app, services, settings):
@@ -42,6 +59,10 @@ def register_api_routes(app, services, settings):
         action = request.form.get('action', '')
         if not deployment or not action:
             return jsonify({'success': False, 'output': 'Missing deployment or action'})
+        try:
+            deployment = require_k8s_name(deployment, 'deployment')
+        except ValueError as e:
+            return jsonify({'success': False, 'output': str(e)})
 
         actions = {
             'restart': f'rollout restart deployment/{deployment}',
@@ -82,6 +103,7 @@ def register_api_routes(app, services, settings):
         return jsonify({'success': rc == 0, 'output': out + err if out or err else 'No output'})
 
     @app.route('/server/battlegroup/action', methods=['POST'])
+    @auth_req
     @limiter.limit("10 per hour")
     def battlegroup_action():
         action = request.form.get('action', '')
@@ -92,6 +114,7 @@ def register_api_routes(app, services, settings):
         return jsonify({'success': rc == 0, 'output': out + err if out or err else 'No output'})
 
     @app.route('/server/battlegroup/update', methods=['POST'])
+    @auth_req
     @limiter.limit("5 per hour")
     def battlegroup_update():
         bg_script = settings['kubernetes']['battlegroup_script']
@@ -100,6 +123,7 @@ def register_api_routes(app, services, settings):
 
     # Firewall management
     @app.route('/server/firewall')
+    @auth_req
     def firewall_status():
         port_map = {
             'filebrowser': {'port': 18888, 'name': 'File Browser'},
@@ -134,6 +158,7 @@ def register_api_routes(app, services, settings):
         })
 
     @app.route('/server/firewall/block', methods=['POST'])
+    @auth_req
     @limiter.limit("10 per hour")
     def firewall_block():
         port = request.form.get('port', type=int)
@@ -169,6 +194,7 @@ def register_api_routes(app, services, settings):
         return jsonify({'success': True, 'output': f'Port {port} blocked (localhost allowed)'})
 
     @app.route('/server/firewall/unblock', methods=['POST'])
+    @auth_req
     @limiter.limit("10 per hour")
     def firewall_unblock():
         port = request.form.get('port', type=int)
@@ -206,6 +232,7 @@ def register_api_routes(app, services, settings):
 
     # Chat API
     @app.route('/api/chat_logs')
+    @auth_req
     def api_chat_logs():
         try:
             chat_svc.ensure_history_table()
@@ -234,6 +261,7 @@ def register_api_routes(app, services, settings):
 
     # Player IP management
     @app.route('/api/set_player_ip', methods=['POST'])
+    @auth_req
     def api_set_player_ip():
         try:
             player_id = request.form.get('player_id', type=int)
@@ -250,6 +278,7 @@ def register_api_routes(app, services, settings):
             return jsonify({'success': False, 'error': str(e)})
 
     @app.route('/api/detect_player_ips', methods=['POST'])
+    @auth_req
     def api_detect_player_ips():
         try:
             success, message = admin_svc.detect_player_ips(settings['kubernetes']['namespace'])
@@ -259,6 +288,7 @@ def register_api_routes(app, services, settings):
 
     # Ban management
     @app.route('/api/ban_player', methods=['POST'])
+    @auth_req
     @limiter.limit("5 per hour")
     def api_ban_player():
         try:
@@ -276,6 +306,7 @@ def register_api_routes(app, services, settings):
             return jsonify({'success': False, 'error': str(e)})
 
     @app.route('/api/get_player_ban', methods=['POST'])
+    @auth_req
     def api_get_player_ban():
         try:
             player_id = request.form.get('player_id', type=int)
@@ -297,6 +328,7 @@ def register_api_routes(app, services, settings):
             return jsonify({'success': False, 'error': str(e)})
 
     @app.route('/api/get_player_history', methods=['POST'])
+    @auth_req
     def api_get_player_history():
         try:
             player_id = request.form.get('player_id', type=int)
@@ -319,6 +351,7 @@ def register_api_routes(app, services, settings):
             return jsonify({'success': False, 'error': str(e)})
 
     @app.route('/api/unban_player', methods=['POST'])
+    @auth_req
     @limiter.limit("5 per hour")
     def api_unban_player():
         try:
@@ -332,6 +365,7 @@ def register_api_routes(app, services, settings):
             return jsonify({'success': False, 'error': str(e)})
 
     @app.route('/api/emergency_unban', methods=['POST'])
+    @auth_req
     def api_emergency_unban():
         try:
             ip = request.form.get('ip', '').strip()
@@ -343,6 +377,7 @@ def register_api_routes(app, services, settings):
             return jsonify({'success': False, 'error': str(e)})
 
     @app.route('/api/kick_player', methods=['POST'])
+    @auth_req
     @limiter.limit("10 per hour")
     def api_kick_player():
         try:
@@ -357,6 +392,7 @@ def register_api_routes(app, services, settings):
 
     # Vitals editing
     @app.route('/api/edit_vitals', methods=['POST'])
+    @auth_req
     @limiter.limit("10 per hour")
     def api_edit_vitals():
         try:
@@ -500,6 +536,7 @@ def register_api_routes(app, services, settings):
 
     # Maintenance
     @app.route('/api/maintenance/create_indexes', methods=['POST'])
+    @auth_req
     def api_create_indexes():
         try:
             success, created, error = admin_svc.create_indexes()
@@ -511,6 +548,7 @@ def register_api_routes(app, services, settings):
 
     # Delete vehicle
     @app.route('/api/vehicles/<int:vehicle_id>', methods=['DELETE'])
+    @auth_req
     def delete_vehicle(vehicle_id):
         success, message = vehicle_svc.delete_vehicle(vehicle_id)
         if success:
@@ -519,6 +557,7 @@ def register_api_routes(app, services, settings):
 
     # Delete building
     @app.route('/api/buildings/<int:building_id>', methods=['DELETE'])
+    @auth_req
     def delete_building(building_id):
         conn = db.get_connection()
         if not conn:
@@ -745,12 +784,11 @@ def register_api_routes(app, services, settings):
     def _validate_fb_path(path):
         """Validate filebrowser path is within allowed directory."""
         import posixpath
-        normalized = posixpath.normpath(path)
-        if not normalized.startswith(FILEBROWSER_BASE_PATH):
+        path_str = str(path or "").lstrip("/")
+        if '..' in path_str or '\x00' in path_str:
             return False
-        if '..' in path or '\x00' in path:
-            return False
-        return True
+        normalized = posixpath.normpath("/" + path_str)
+        return normalized == FILEBROWSER_BASE_PATH or normalized.startswith(FILEBROWSER_BASE_PATH + "/")
 
     def _get_fb_pod():
         """Get the FileBrowser pod name dynamically."""
@@ -771,7 +809,8 @@ def register_api_routes(app, services, settings):
         path = request.form.get('path', '/srv')
         if not _validate_fb_path(path):
             return jsonify({'success': False, 'error': 'Invalid path: access denied'})
-        out, err, rc = _fb_exec(f'ls -la "{path}"', timeout=10)
+        safe_path = quote_remote(path)
+        out, err, rc = _fb_exec(f'ls -la {safe_path}', timeout=10)
         if rc != 0:
             return jsonify({'success': False, 'error': err or 'Failed to list directory'})
 
@@ -802,7 +841,8 @@ def register_api_routes(app, services, settings):
             return jsonify({'success': False, 'error': 'Missing path'})
         if not _validate_fb_path(path):
             return jsonify({'success': False, 'error': 'Invalid path: access denied'})
-        out, err, rc = _fb_exec(f'head -c 100000 "{path}"', timeout=10)
+        safe_path = quote_remote(path)
+        out, err, rc = _fb_exec(f'head -c 100000 {safe_path}', timeout=10)
         if rc != 0:
             return jsonify({'success': False, 'error': err or 'Failed to read file'})
         return jsonify({'success': True, 'content': out, 'path': path})
@@ -819,7 +859,9 @@ def register_api_routes(app, services, settings):
             return jsonify({'success': False, 'error': 'Invalid path: access denied'})
         import base64
         content_b64 = base64.b64encode(content.encode()).decode()
-        out, err, rc = _fb_exec(f'sh -c \'echo {content_b64} | base64 -d > "{path}"\'', timeout=15)
+        safe_path = quote_remote(path)
+        save_script = quote_remote(f"base64 -d > {safe_path}")
+        out, err, rc = _fb_exec(f"sh -c {save_script}", timeout=15)
         if rc != 0:
             return jsonify({'success': False, 'error': err or 'Failed to save file'})
         return jsonify({'success': True})

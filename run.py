@@ -41,13 +41,25 @@ if __name__ == '__main__':
     print(f"\n  Dune Awakening Dashboard")
     print(f"  {protocol}://{host}:{port}")
     print(f"  Debug: {debug}")
+
+    if debug and host not in ('127.0.0.1', 'localhost', '0.0.0.0'):
+        print("  [ERROR] Refusing to run debug mode on a non-loopback host!")
+        print(f"  [ERROR] Host '{host}' is not 127.0.0.1, localhost, or 0.0.0.0")
+        print("  [ERROR] Set dashboard.debug: false in settings.yaml or bind to loopback\n")
+        sys.exit(1)
+
     if ssl_context:
         print(f"  SSL: Enabled\n")
     else:
         print(f"  SSL: Disabled (use http:// not https://)\n")
-        if host == '0.0.0.0':
+        if host == '0.0.0.0' and not os.environ.get('DUNE_ALLOW_INSECURE_REMOTE'):
+            print("  [ERROR] Refusing to bind 0.0.0.0 without SSL!")
+            print("  [ERROR] Set DUNE_ALLOW_INSECURE_REMOTE=1 to override (NOT RECOMMENDED)")
+            print("  [ERROR] Enable SSL in settings.yaml or bind to 127.0.0.1\n")
+            sys.exit(1)
+        elif host == '0.0.0.0':
             print("  [WARN] Binding to 0.0.0.0 without SSL! Credentials sent in cleartext.")
-            print("  [WARN] Enable SSL in settings.yaml or bind to 127.0.0.1\n")
+            print("  [WARN] DUNE_ALLOW_INSECURE_REMOTE is set - override is active\n")
 
     # Start HTTP → HTTPS redirect server when SSL is enabled
     if ssl_context:
