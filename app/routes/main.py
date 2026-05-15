@@ -451,3 +451,117 @@ def register_routes(app, services, settings):
         except Exception as e:
             logger.exception("Error in server_status route")
             return render_template('server.html', db_error=f"{type(e).__name__}: {e}")
+
+    # Map - shows locations of players, vehicles, buildings
+    @app.route('/map')
+    @login_required
+    def map_page():
+        try:
+            # Get players with coordinates
+            players = db.query("""
+                SELECT
+                    a.id,
+                    COALESCE(NULLIF(ps.character_name, ''), 'Unknown') as name,
+                    a.map,
+                    a.transform
+                FROM dune.actors a
+                JOIN dune.player_state ps ON a.id = ps.player_pawn_id
+                WHERE a.transform IS NOT NULL
+                ORDER BY a.map, ps.character_name
+            """) or []
+
+            # Get vehicles with coordinates
+            vehicles = db.query("""
+                SELECT v.id, v.name, a.map, a.transform, a.class
+                FROM dune.vehicles v
+                JOIN dune.actors a ON v.id = a.id
+                WHERE a.transform IS NOT NULL
+                ORDER BY a.map, v.name
+            """) or []
+
+            # Get buildings with coordinates
+            buildings = db.query("""
+                SELECT b.id, a.map, a.transform, a.class
+                FROM dune.buildings b
+                JOIN dune.actors a ON b.id = a.id
+                WHERE a.transform IS NOT NULL
+                ORDER BY a.map
+                LIMIT 200
+            """) or []
+
+            # Parse coordinates from transform field
+            def parse_transform(t):
+                if not t:
+                    return None
+                try:
+                    # Format: ("(x,y,z)","(x,y,z,w)")
+                    import re
+                    pos_match = re.search(r'\(([0-9.e+-]+),([0-9.e+-]+),([0-9.e+-]+)\)', str(t))
+                    if pos_match:
+                        return {
+                            'x': float(pos_match.group(1)),
+                            'y': float(pos_match.group(2)),
+                            'z': float(pos_match.group(3))
+                        }
+                except Exception:
+                    pass
+                return None
+
+            # Process players
+            player_locations = []
+            for p in players:
+                coords = parse_transform(p.get('transform'))
+                if coords:
+                    player_locations.append({
+                        'id': p['id'],
+                        'name': p['name'],
+                        'map': p['map'],
+                        'x': coords['x'],
+                        'y': coords['y'],
+                        'z': coords['z']
+                    })
+
+            # Process vehicles
+            vehicle_locations = []
+            for v in vehicles:
+                coords = parse_transform(v.get('transform'))
+                if coords:
+                    vehicle_locations.append({
+                        'id': v['id'],
+                        'name': v.get('name', 'Unknown'),
+                        'map': v['map'],
+                        'class': v.get('class', '').split('/')[-1] if v.get('class') else '',
+                        'x': coords['x'],
+                        'y': coords['y'],
+                        'z': coords['z']
+                    })
+
+            # Process buildings
+            building_locations = []
+            for b in buildings:
+                coords = parse_transform(b.get('transform'))
+                if coords:
+                    building_locations.append({
+                        'id': b['id'],
+                        'map': b['map'],
+                        'class': b.get('class', '').split('/')[-1] if b.get('class') else '',
+                        'x': coords['x'],
+                        'y': coords['y'],
+                        'z': coords['z']
+                    })
+
+            # Get unique maps
+            all_maps = set()
+            for loc in player_locations + vehicle_locations + building_locations:
+                if loc.get('map'):
+                    all_maps.add(loc['map'])
+            maps = sorted(all_maps)
+
+            return render_template('map.html',
+                players=player_locations,
+                vehicles=vehicle_locations,
+                buildings=building_locations,
+                maps=maps)
+        except Exception as e:
+            logger.exception("Error in map route")
+            return render_template('map.html', db_error=f"{type(e).__name__}: {e}")

@@ -1,0 +1,301 @@
+{% extends "base.html" %}
+
+{% block title %}Map - Dune Dashboard{% endblock %}
+
+{% block content %}
+<style>
+.map-container {
+    display: grid;
+    grid-template-columns: 300px 1fr;
+    gap: 20px;
+    height: calc(100vh - 120px);
+}
+
+.map-sidebar {
+    background: var(--card-bg);
+    border-radius: 8px;
+    padding: 16px;
+    overflow-y: auto;
+    box-shadow: var(--shadow);
+}
+
+.map-sidebar h3 {
+    font-size: 14px;
+    color: var(--text-light);
+    margin: 16px 0 8px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+}
+
+.map-sidebar h3:first-child {
+    margin-top: 0;
+}
+
+.map-checkbox {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 0;
+    cursor: pointer;
+    font-size: 13px;
+}
+
+.map-checkbox input {
+    accent-color: var(--primary);
+}
+
+.location-list {
+    max-height: 200px;
+    overflow-y: auto;
+    font-size: 12px;
+}
+
+.location-item {
+    padding: 4px 8px;
+    border-radius: 4px;
+    margin: 2px 0;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+}
+
+.location-item:hover {
+    background: var(--hover);
+}
+
+.location-item.player { border-left: 3px solid var(--primary); }
+.location-item.vehicle { border-left: 3px solid #3498db; }
+.location-item.building { border-left: 3px solid var(--success); }
+
+.map-view {
+    background: var(--card-bg);
+    border-radius: 8px;
+    position: relative;
+    overflow: hidden;
+    box-shadow: var(--shadow);
+    min-height: 400px;
+}
+
+.map-placeholder {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: var(--text-muted);
+    padding: 40px;
+    text-align: center;
+}
+
+.map-placeholder-icon {
+    font-size: 48px;
+    margin-bottom: 16px;
+    opacity: 0.5;
+}
+
+.map-stats {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+}
+
+.stat-card {
+    background: var(--bg);
+    padding: 12px 16px;
+    border-radius: 6px;
+    min-width: 100px;
+}
+
+.stat-card .count {
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--primary);
+}
+
+.stat-card .label {
+    font-size: 11px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+}
+
+.map-select {
+    padding: 8px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--card-bg);
+    color: var(--text);
+    font-size: 13px;
+    margin-bottom: 16px;
+}
+
+.coord-display {
+    background: var(--code-bg);
+    padding: 8px 12px;
+    border-radius: 4px;
+    font-family: monospace;
+    font-size: 12px;
+    color: var(--text-light);
+    margin-top: 8px;
+}
+
+.no-map-note {
+    background: var(--hover);
+    border: 1px dashed var(--border);
+    padding: 16px;
+    border-radius: 8px;
+    margin-top: 16px;
+    font-size: 13px;
+    color: var(--text-muted);
+}
+</style>
+
+<h2>World Map</h2>
+
+{% if db_error %}
+<div class="error-banner danger">{{ db_error }}</div>
+{% endif %}
+
+<div class="map-stats">
+    <div class="stat-card">
+        <div class="count">{{ players|length }}</div>
+        <div class="label">Players</div>
+    </div>
+    <div class="stat-card">
+        <div class="count">{{ vehicles|length }}</div>
+        <div class="label">Vehicles</div>
+    </div>
+    <div class="stat-card">
+        <div class="count">{{ buildings|length }}</div>
+        <div class="label">Buildings</div>
+    </div>
+</div>
+
+<div class="map-container">
+    <div class="map-sidebar">
+        <h3>Filter by Type</h3>
+        <label class="map-checkbox">
+            <input type="checkbox" id="show-players" checked onchange="updateMap()">
+            Players ({{ players|length }})
+        </label>
+        <label class="map-checkbox">
+            <input type="checkbox" id="show-vehicles" checked onchange="updateMap()">
+            Vehicles ({{ vehicles|length }})
+        </label>
+        <label class="map-checkbox">
+            <input type="checkbox" id="show-buildings" checked onchange="updateMap()">
+            Buildings ({{ buildings|length }})
+        </label>
+
+        <h3>Filter by Map</h3>
+        <select class="map-select" id="map-filter" onchange="filterMap()">
+            <option value="">All Maps</option>
+            {% for map in maps %}
+            <option value="{{ map }}">{{ map }}</option>
+            {% endfor %}
+        </select>
+
+        <h3>Players</h3>
+        <div class="location-list" id="player-list">
+            {% for p in players %}
+            <div class="location-item player" data-type="player" data-map="{{ p.map }}" data-x="{{ p.x }}" data-y="{{ p.y }}" data-z="{{ p.z }}" data-name="{{ p.name }}" onclick="showCoords(this)">
+                <span>{{ p.name }}</span>
+                <span style="color:var(--text-muted)">{{ p.map }}</span>
+            </div>
+            {% endfor %}
+            {% if not players %}
+            <div style="color:var(--text-muted);font-size:12px;padding:8px;">No player locations</div>
+            {% endif %}
+        </div>
+
+        <h3>Vehicles</h3>
+        <div class="location-list" id="vehicle-list">
+            {% for v in vehicles %}
+            <div class="location-item vehicle" data-type="vehicle" data-map="{{ v.map }}" data-x="{{ v.x }}" data-y="{{ v.y }}" data-z="{{ v.z }}" data-name="{{ v.name }} ({{ v.class }})" onclick="showCoords(this)">
+                <span>{{ v.name|truncate(15) }}</span>
+                <span style="color:var(--text-muted)">{{ v.map }}</span>
+            </div>
+            {% endfor %}
+            {% if not vehicles %}
+            <div style="color:var(--text-muted);font-size:12px;padding:8px;">No vehicle locations</div>
+            {% endif %}
+        </div>
+
+        <h3>Buildings</h3>
+        <div class="location-list" id="building-list">
+            {% for b in buildings[:50] %}
+            <div class="location-item building" data-type="building" data-map="{{ b.map }}" data-x="{{ b.x }}" data-y="{{ b.y }}" data-z="{{ b.z }}" data-name="{{ b.class }}" onclick="showCoords(this)">
+                <span>{{ b.class|truncate(20) }}</span>
+                <span style="color:var(--text-muted)">{{ b.map }}</span>
+            </div>
+            {% endfor %}
+            {% if not buildings %}
+            <div style="color:var(--text-muted);font-size:12px;padding:8px;">No building locations</div>
+            {% endif %}
+            {% if buildings|length > 50 %}
+            <div style="color:var(--text-muted);font-size:11px;padding:8px;">+{{ buildings|length - 50 }} more</div>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="map-view">
+        <div class="map-placeholder">
+            <div class="map-placeholder-icon">🗺️</div>
+            <h3>Map Image Coming Soon</h3>
+            <p>This is a prototype showing coordinate data.<br>Once you source a map image, markers will be overlaid here.</p>
+            <div class="no-map-note">
+                <strong>Data available:</strong><br>
+                Players: {{ players|length }} locations<br>
+                Vehicles: {{ vehicles|length }} locations<br>
+                Buildings: {{ buildings|length }} locations<br><br>
+                <em>Coordinates are extracted from the game world. Once a map image is added, these will appear as clickable markers.</em>
+            </div>
+            <div id="selected-coords" style="display:none;margin-top:16px;">
+                <strong>Selected:</strong>
+                <div class="coord-display" id="coord-display"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let currentFilter = '';
+
+function showCoords(el) {
+    const type = el.dataset.type;
+    const name = el.dataset.name;
+    const map = el.dataset.map;
+    const x = parseFloat(el.dataset.x);
+    const y = parseFloat(el.dataset.y);
+    const z = parseFloat(el.dataset.z);
+
+    document.getElementById('selected-coords').style.display = 'block';
+    document.getElementById('coord-display').innerHTML =
+        `<strong>${name}</strong><br>` +
+        `Map: ${map}<br>` +
+        `X: ${x.toFixed(2)} | Y: ${y.toFixed(2)} | Z: ${z.toFixed(2)}`;
+}
+
+function filterMap() {
+    currentFilter = document.getElementById('map-filter').value;
+    updateMap();
+}
+
+function updateMap() {
+    const showPlayers = document.getElementById('show-players').checked;
+    const showVehicles = document.getElementById('show-vehicles').checked;
+    const showBuildings = document.getElementById('show-buildings').checked;
+
+    // Filter lists
+    document.querySelectorAll('#player-list .location-item').forEach(el => {
+        el.style.display = (showPlayers && (!currentFilter || el.dataset.map === currentFilter)) ? 'flex' : 'none';
+    });
+    document.querySelectorAll('#vehicle-list .location-item').forEach(el => {
+        el.style.display = (showVehicles && (!currentFilter || el.dataset.map === currentFilter)) ? 'flex' : 'none';
+    });
+    document.querySelectorAll('#building-list .location-item').forEach(el => {
+        el.style.display = (showBuildings && (!currentFilter || el.dataset.map === currentFilter)) ? 'flex' : 'none';
+    });
+}
+</script>
+{% endblock %}

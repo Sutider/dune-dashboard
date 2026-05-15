@@ -37,4 +37,5 @@ NAV_PAGES = [
     ('/vehicles', 'Vehicles'),
     ('/guilds', 'Guilds'),
     ('/buildings', 'Buildings'),
+    ('/map', 'Map'),
 ]
