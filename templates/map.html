@@ -211,8 +211,9 @@
         <h3>Vehicles</h3>
         <div class="location-list" id="vehicle-list">
             {% for v in vehicles %}
-            <div class="location-item vehicle" data-type="vehicle" data-map="{{ v.map }}" data-x="{{ v.x }}" data-y="{{ v.y }}" data-z="{{ v.z }}" data-name="{{ v.name }} ({{ v.class }})" onclick="showCoords(this)">
-                <span>{{ v.name|truncate(15) }}</span>
+            {% set vehicle_name = v.class.split('/')[-1].split('.')[0] if v.class else 'Unknown' %}
+            <div class="location-item vehicle" data-type="vehicle" data-map="{{ v.map }}" data-x="{{ v.x }}" data-y="{{ v.y }}" data-z="{{ v.z }}" data-name="{{ vehicle_name }}" onclick="showCoords(this)">
+                <span>{{ vehicle_name|truncate(15) }}</span>
                 <span style="color:var(--text-muted)">{{ v.map }}</span>
             </div>
             {% endfor %}

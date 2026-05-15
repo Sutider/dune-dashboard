@@ -472,11 +472,11 @@ def register_routes(app, services, settings):
 
             # Get vehicles with coordinates
             vehicles = db.query("""
-                SELECT v.id, v.name, a.map, a.transform, a.class
+                SELECT v.id, a.map, a.transform, a.class
                 FROM dune.vehicles v
                 JOIN dune.actors a ON v.id = a.id
                 WHERE a.transform IS NOT NULL
-                ORDER BY a.map, v.name
+                ORDER BY a.map, a.class
             """) or []
 
             # Get buildings with coordinates
