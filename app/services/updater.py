@@ -229,9 +229,12 @@ class UpdateService:
         """Restart the dashboard via the launcher script to preserve SSH/DB tunnels."""
         try:
             if os.name == 'nt':
-                launcher = os.path.join(self.project_root, 'start.bat')
+                launcher = os.path.join(self.project_root, 'launcher.ps1')
                 if os.path.exists(launcher):
-                    subprocess.Popen(['cmd', '/c', 'start', '', launcher], shell=True)
+                    subprocess.Popen(
+                        ['powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', launcher],
+                        creationflags=subprocess.CREATE_NEW_CONSOLE
+                    )
                 else:
                     subprocess.Popen([sys.executable, os.path.join(self.project_root, 'run.py')], creationflags=subprocess.CREATE_NEW_CONSOLE)
             else:
