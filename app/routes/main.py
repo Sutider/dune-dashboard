@@ -391,10 +391,10 @@ def register_routes(app, services, settings):
     def server_status():
         try:
             active_servers = db.query("""
-                SELECT a.server_id, w.map
-                FROM dune.active_server_ids a
-                LEFT JOIN dune.world_partition w ON a.server_id = w.server_id
-                ORDER BY w.map, a.server_id
+                SELECT server_id, map
+                FROM dune.world_partition
+                WHERE server_id IS NOT NULL
+                ORDER BY map, server_id
             """) or []
             per_map = player_svc.get_players_per_map()
             online_players = db.query(
