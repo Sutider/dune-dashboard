@@ -382,7 +382,7 @@
     color: #fff;
 }
 
-/* Light themes: active state needs to be readable */
+/* Active state text color based on theme brightness */
 [data-theme="default"] .theme-option.active,
 [data-theme="atreides"] .theme-option.active,
 [data-theme="fremen"] .theme-option.active,
@@ -390,40 +390,44 @@
 [data-theme="mentat"] .theme-option.active,
 [data-theme="ordos"] .theme-option.active,
 [data-theme="ix"] .theme-option.active,
-[data-theme="choam"] .theme-option.active {
-    color: #fff;
-}
-
+[data-theme="choam"] .theme-option.active,
+[data-theme="corrino"] .theme-option.active,
 [data-theme="bene-gesserit"] .theme-option.active {
     color: #1a1a1a;
+}
+
+/* Dark themes get white text */
+[data-theme="harkonnen"] .theme-option.active,
+[data-theme="spacing-guild"] .theme-option.active,
+[data-theme="emperor"] .theme-option.active,
+[data-theme="tleilax"] .theme-option.active {
+    color: #fff;
 }
 
 .theme-option.active:hover {
     background: var(--primary-dark);
 }
 
-/* Dark theme dropdown adjustments - ensure text is always readable */
+/* Dark theme dropdown - apply only when current theme is dark (based on dark bg) */
 [data-theme="harkonnen"] .theme-dropdown-content,
 [data-theme="spacing-guild"] .theme-dropdown-content,
 [data-theme="tleilax"] .theme-dropdown-content,
 [data-theme="emperor"] .theme-dropdown-content {
-    background: #2a2a35;
-    border-color: #4a4a5a;
+    background: #252530;
+    border-color: #404050;
 }
 
-[data-theme="harkonnen"] .theme-option,
-[data-theme="spacing-guild"] .theme-option,
-[data-theme="tleilax"] .theme-option,
-[data-theme="emperor"] .theme-option,
-[data-theme="corrino"] .theme-option {
-    color: #e8e8f0;
+[data-theme="harkonnen"] .theme-dropdown-content .theme-option,
+[data-theme="spacing-guild"] .theme-dropdown-content .theme-option,
+[data-theme="tleilax"] .theme-dropdown-content .theme-option,
+[data-theme="emperor"] .theme-dropdown-content .theme-option {
+    color: #e0e0e8;
 }
 
-[data-theme="harkonnen"] .theme-option:hover,
-[data-theme="spacing-guild"] .theme-option:hover,
-[data-theme="tleilax"] .theme-option:hover,
-[data-theme="emperor"] .theme-option:hover,
-[data-theme="corrino"] .theme-option:hover {
+[data-theme="harkonnen"] .theme-dropdown-content .theme-option:hover,
+[data-theme="spacing-guild"] .theme-dropdown-content .theme-option:hover,
+[data-theme="tleilax"] .theme-dropdown-content .theme-option:hover,
+[data-theme="emperor"] .theme-dropdown-content .theme-option:hover {
     background: rgba(255,255,255,0.1);
 }
 
