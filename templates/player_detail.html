@@ -468,7 +468,7 @@ function closeModal(id) {
 async function submitEdit(form, url) {
     const data = new FormData(form);
     try {
-        const resp = await fetch(url, { method: 'POST', body: data });
+        const resp = await csrfFetch(url, { method: 'POST', body: data });
         const result = await resp.json();
         if (result.success) {
             alert('Saved successfully!');
@@ -486,7 +486,7 @@ async function submitSpecEdit() {
     const form = document.getElementById('spec-form');
     const data = new FormData(form);
     try {
-        const resp = await fetch('/api/edit_tech_knowledge', { method: 'POST', body: data });
+        const resp = await csrfFetch('/api/edit_tech_knowledge', { method: 'POST', body: data });
         const result = await resp.json();
         if (result.success) {
             alert('XP saved!');
@@ -526,7 +526,7 @@ async function submitCurrencyEdit(currencyId) {
     data.append('currency_id', currencyId);
     data.append('new_balance', newBalance);
     try {
-        const resp = await fetch('/api/edit_currency', { method: 'POST', body: data });
+        const resp = await csrfFetch('/api/edit_currency', { method: 'POST', body: data });
         const result = await resp.json();
         if (result.success) {
             alert('Currency updated successfully!');
@@ -543,7 +543,7 @@ async function submitVitalsEdit() {
     const form = document.getElementById('vitals-form');
     const data = new FormData(form);
     try {
-        const resp = await fetch('/api/edit_vitals', { method: 'POST', body: data });
+        const resp = await csrfFetch('/api/edit_vitals', { method: 'POST', body: data });
         const result = await resp.json();
         if (result.success) {
             alert('Vitals updated successfully!');
@@ -565,7 +565,7 @@ async function editItem(itemId, field, currentValue) {
     data.append('field', field);
     data.append('value', newValue);
     try {
-        const resp = await fetch('/api/edit_item', { method: 'POST', body: data });
+        const resp = await csrfFetch('/api/edit_item', { method: 'POST', body: data });
         const result = await resp.json();
         if (result.success) {
             const span = document.getElementById('item-' + field.replace('_', '-') + '-' + itemId);
@@ -584,7 +584,7 @@ async function deleteItem(itemId, templateName) {
     const data = new FormData();
     data.append('item_id', itemId);
     try {
-        const resp = await fetch('/api/delete_item', { method: 'POST', body: data });
+        const resp = await csrfFetch('/api/delete_item', { method: 'POST', body: data });
         const result = await resp.json();
         if (result.success) {
             const row = document.getElementById('item-row-' + itemId);
@@ -606,7 +606,7 @@ async function submitAddItem() {
     const form = document.getElementById('add-item-form');
     const data = new FormData(form);
     try {
-        const resp = await fetch('/api/add_item', { method: 'POST', body: data });
+        const resp = await csrfFetch('/api/add_item', { method: 'POST', body: data });
         const result = await resp.json();
         if (result.success) {
             alert('Item added successfully!');

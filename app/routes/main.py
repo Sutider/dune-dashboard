@@ -317,14 +317,24 @@ def register_routes(app, services, settings):
     def events_page():
         game_events = []
         event_logs = []
+
+        def safe_query(table, cols, order_col, limit):
+            try:
+                return db.query(f"SELECT {cols} FROM {table} ORDER BY {order_col} DESC LIMIT {limit}") or []
+            except Exception as e:
+                logger.error(f"Error fetching {table}: {e}")
+                return []
+
         try:
-            game_events = db.query("SELECT id, event_type, actor_id, actor_name, map, universe_time, x, y, z FROM dune.game_events ORDER BY universe_time DESC LIMIT 50") or []
-        except Exception as e:
-            logger.error(f"Error fetching game_events: {e}")
+            game_events = safe_query("dune.game_events", "*", "universe_time", 50)
+        except Exception:
+            pass
+
         try:
-            event_logs = db.query("SELECT id, event_type, category, function_name, message, event_time, meta FROM dune.event_log ORDER BY event_time DESC LIMIT 100") or []
-        except Exception as e:
-            logger.error(f"Error fetching event_logs: {e}")
+            event_logs = safe_query("dune.event_log", "*", "event_time", 100)
+        except Exception:
+            pass
+
         return render_template('events.html', game_events=game_events, event_logs=event_logs)
 
     # Chat

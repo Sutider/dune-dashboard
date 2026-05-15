@@ -634,7 +634,7 @@ document.getElementById('btn-clear-world')?.addEventListener('click', async func
     this.disabled = true;
     this.textContent = 'Clearing...';
     try {
-        const resp = await fetch('/api/director/character_transfer_clear', { method: 'POST' });
+        const resp = await csrfFetch('/api/director/character_transfer_clear', { method: 'POST' });
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         document.getElementById('world-status-msg').textContent = 'World status overrides cleared.';
         this.textContent = 'Cleared!';
@@ -655,7 +655,7 @@ document.getElementById('btn-apply-transfer')?.addEventListener('click', async f
         FreeToTransferCharactersTo: document.getElementById('free-transfer-to').checked
     };
     try {
-        const resp = await fetch('/api/director/character_transfer', {
+        const resp = await csrfFetch('/api/director/character_transfer', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(config)
@@ -674,7 +674,7 @@ document.getElementById('btn-clear-transfer')?.addEventListener('click', async f
     this.disabled = true;
     this.textContent = 'Clearing...';
     try {
-        const resp = await fetch('/api/director/character_transfer_clear', { method: 'POST' });
+        const resp = await csrfFetch('/api/director/character_transfer_clear', { method: 'POST' });
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         document.getElementById('transfer-status-msg').textContent = 'Transfer settings cleared.';
         this.textContent = 'Cleared!';

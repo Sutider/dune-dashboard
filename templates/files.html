@@ -93,7 +93,7 @@ async function loadFiles(path) {
     try {
         const form = new FormData();
         form.append('path', path);
-        const resp = await fetch('/api/files/list', { method: 'POST', body: form });
+        const resp = await csrfFetch('/api/files/list', { method: 'POST', body: form });
         const data = await resp.json();
         if (!data.success) {
             list.innerHTML = '';

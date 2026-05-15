@@ -24,7 +24,7 @@ def init_auth(app, settings, limiter=None):
         return None
 
     @app.route('/login', methods=['GET', 'POST'])
-    @limiter.limit("10 per minute") if limiter else lambda f: f
+    @limiter.limit("5 per hour") if limiter else lambda f: f
     def login():
         if current_user.is_authenticated:
             return redirect(url_for('overview'))

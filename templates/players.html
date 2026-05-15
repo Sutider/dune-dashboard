@@ -117,7 +117,7 @@ document.querySelectorAll('.btn-action[data-action="kick"]').forEach(btn => {
         try {
             const form = new FormData();
             form.append('player_id', pid);
-            const resp = await fetch('/api/kick_player', { method: 'POST', body: form });
+            const resp = await csrfFetch('/api/kick_player', { method: 'POST', body: form });
             const data = await resp.json();
             alert(data.success ? data.message : 'Error: ' + (data.error || 'Failed'));
         } catch (e) {
@@ -141,7 +141,7 @@ document.querySelectorAll('.btn-action[data-action="ban"]').forEach(btn => {
             form.append('duration', duration);
             form.append('reason', reason);
             form.append('note', note);
-            const resp = await fetch('/api/ban_player', { method: 'POST', body: form });
+            const resp = await csrfFetch('/api/ban_player', { method: 'POST', body: form });
             const data = await resp.json();
             alert(data.success ? `Banned ${name} for ${duration} minutes` : 'Error: ' + (data.error || 'Failed'));
         } catch (e) {
@@ -157,7 +157,7 @@ document.querySelectorAll('.btn-action[data-action="unban"]').forEach(btn => {
         try {
             const form = new FormData();
             form.append('player_id', pid);
-            const resp = await fetch('/api/unban_player', { method: 'POST', body: form });
+            const resp = await csrfFetch('/api/unban_player', { method: 'POST', body: form });
             const data = await resp.json();
             alert(data.success ? `Unbanned ${name}` : 'Error: ' + (data.error || 'Failed'));
         } catch (e) {
@@ -172,7 +172,7 @@ document.querySelectorAll('.btn-action[data-action="viewban"]').forEach(btn => {
         try {
             const form = new FormData();
             form.append('player_id', pid);
-            const resp = await fetch('/api/get_player_ban', { method: 'POST', body: form });
+            const resp = await csrfFetch('/api/get_player_ban', { method: 'POST', body: form });
             const data = await resp.json();
             if (data.banned) {
                 alert(`Ban Info for ${name}:\n\nDuration: ${data.duration} minutes\nReason: ${data.reason}\nNote: ${data.note || 'None'}\nBanned: ${data.banned_at}\nExpires: ${data.expires_at}`);
@@ -191,7 +191,7 @@ document.querySelectorAll('.btn-action[data-action="history"]').forEach(btn => {
         try {
             const form = new FormData();
             form.append('player_id', pid);
-            const resp = await fetch('/api/get_player_history', { method: 'POST', body: form });
+            const resp = await csrfFetch('/api/get_player_history', { method: 'POST', body: form });
             const data = await resp.json();
             if (data.history && data.history.length > 0) {
                 let msg = `Action History for ${name}:\n\n`;
@@ -225,7 +225,7 @@ document.querySelectorAll('.ip-cell').forEach(cell => {
                 const form = new FormData();
                 form.append('player_id', pid);
                 form.append('ip_address', newIp);
-                const resp = await fetch('/api/set_player_ip', { method: 'POST', body: form });
+                const resp = await csrfFetch('/api/set_player_ip', { method: 'POST', body: form });
                 const data = await resp.json();
                 if (data.success) {
                     this.textContent = newIp || '—';
@@ -244,7 +244,7 @@ async function detectIps() {
     try {
         const btn = document.querySelector('button[onclick="detectIps()"]');
         if (btn) { btn.disabled = true; btn.textContent = 'Detecting...'; }
-        const resp = await fetch('/api/detect_player_ips', { method: 'POST' });
+        const resp = await csrfFetch('/api/detect_player_ips', { method: 'POST' });
         const data = await resp.json();
         if (data.success) {
             console.log('IP detection:', data.message);

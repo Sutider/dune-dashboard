@@ -167,21 +167,55 @@ $FileBrowserPort = "18888"
 $AuthUser = "admin"
 $AuthPass = ""
 
-# Try to detect VM IP from known_hosts
-$KnownHosts = Join-Path $env:USERPROFILE ".ssh\known_hosts"
-if (Test-Path $KnownHosts) {
-    $content = Get-Content $KnownHosts
-    $ips = @()
-    foreach ($line in $content) {
-        if ($line -match '\b(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\b') {
-            $ips += $matches[1]
+# Try to detect VM IP - prioritize local Hyper-V, then local network IPs from known_hosts
+function Test-IsLocalIP($ip) {
+    if ($ip -match '^192\.168\.') { return $true }
+    if ($ip -match '^10\.') { return $true }
+    if ($ip -match '^172\.(1[6-9]|2[0-9]|3[0-1])\.') { return $true }
+    return $false
+}
+
+# First: try direct Hyper-V detection
+$vmIp = $null
+try {
+    $vmAdapter = Get-VMNetworkAdapter -VMName 'dune-awakening' -ErrorAction SilentlyContinue
+    if ($vmAdapter -and $vmAdapter.IPAddresses) {
+        $localIp = $vmAdapter.IPAddresses | Where-Object { Test-IsLocalIP $_ }
+        if ($localIp) {
+            $vmIp = $localIp[0]
+            Write-Host "  Detected local Hyper-V VM IP: $vmIp" -ForegroundColor Green
         }
     }
-    if ($ips.Count -gt 0) {
-        $VmHost = $ips[-1]
-        Write-Host "  Detected VM IP from SSH history: $VmHost" -ForegroundColor Green
+} catch { }
+
+if (-not $vmIp) {
+    # Fallback: scan known_hosts and prioritize local IPs
+    $KnownHosts = Join-Path $env:USERPROFILE ".ssh\known_hosts"
+    if (Test-Path $KnownHosts) {
+        $content = Get-Content $KnownHosts
+        $localIps = @()
+        $publicIps = @()
+        foreach ($line in $content) {
+            if ($line -match '\b(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\b') {
+                $ip = $matches[1]
+                if (Test-IsLocalIP $ip) {
+                    $localIps += $ip
+                } else {
+                    $publicIps += $ip
+                }
+            }
+        }
+        if ($localIps.Count -gt 0) {
+            $vmIp = $localIps[-1]
+            Write-Host "  Detected local IP from SSH history: $vmIp" -ForegroundColor Green
+        } elseif ($publicIps.Count -gt 0) {
+            $vmIp = $publicIps[-1]
+            Write-Host "  Detected IP from SSH history: $vmIp (verify this is your local VM)" -ForegroundColor Yellow
+        }
     }
 }
+
+if ($vmIp) { $VmHost = $vmIp }
 
 # Auto-detect external IP (try external service first, then local interfaces)
 try {

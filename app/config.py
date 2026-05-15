@@ -45,8 +45,8 @@ DEFAULTS = {
         'port': 18888,
     },
     'firewall': {
-        'block_filebrowser': False,
-        'block_director': False,
+        'block_filebrowser': True,
+        'block_director': True,
         'block_postgres': True,
     },
     'cache': {
@@ -171,17 +171,21 @@ def load_settings(settings_path=None):
     # Backward compatibility: migrate old plaintext password to hash
     # This is a one-time migration that hashes the password and removes plaintext
     auth = settings.get('auth', {})
+    password_migrated = False
     if auth.get('password') and not auth.get('password_hash'):
         try:
             from argon2 import PasswordHasher
             ph = PasswordHasher()
             settings['auth']['password_hash'] = ph.hash(str(auth['password']))
-            # Remove plaintext after hashing
             del settings['auth']['password']
+            password_migrated = True
             logger.info("Migrated plaintext password to Argon2 hash")
         except ImportError:
             logger.error("argon2-cffi not installed. Password hashing unavailable.")
-            # Fallback: keep plaintext for now but log warning
             settings['auth']['password_hash'] = None
+
+    if password_migrated:
+        settings['dashboard']['secret_key'] = secrets.token_hex(32)
+        logger.warning("Rotated secret_key to invalidate sessions after password migration")
 
     return settings

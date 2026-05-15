@@ -270,7 +270,7 @@ document.querySelectorAll('.btn-action').forEach(btn => {
             const form = new FormData();
             form.append('deployment', deploy);
             form.append('action', action);
-            const resp = await fetch('/server/action', { method: 'POST', body: form });
+            const resp = await csrfFetch('/server/action', { method: 'POST', body: form });
             const data = await resp.json();
             outputText.textContent = data.output || (data.success ? 'Done' : 'Failed');
         } catch (e) {
@@ -298,7 +298,7 @@ document.querySelectorAll('.partition-btn').forEach(btn => {
             const form = new FormData();
             form.append('deployment', deploy);
             form.append('action', 'restart');
-            const resp = await fetch('/server/action', { method: 'POST', body: form });
+            const resp = await csrfFetch('/server/action', { method: 'POST', body: form });
             const data = await resp.json();
             outputText.textContent = data.output || (data.success ? 'Restart initiated' : 'Failed');
         } catch (e) {
@@ -344,7 +344,7 @@ async function bgAction(action, btn) {
         const url = action === 'update' ? '/server/battlegroup/update' : '/server/battlegroup/action';
         const form = new FormData();
         form.append('action', action);
-        const resp = await fetch(url, { method: 'POST', body: form });
+        const resp = await csrfFetch(url, { method: 'POST', body: form });
         const data = await resp.json();
         pre.textContent = data.output || (data.success ? `${action} completed successfully` : `Failed: ${data.output}`);
     } catch (e) {
@@ -435,7 +435,7 @@ async function loadFwStatus() {
                 try {
                     const form = new FormData();
                     form.append('port', port);
-                    const resp = await fetch('/server/firewall/' + action, { method: 'POST', body: form });
+                    const resp = await csrfFetch('/server/firewall/' + action, { method: 'POST', body: form });
                     const result = await resp.json();
                     outputText.textContent = result.output || (result.success ? 'Done' : 'Failed');
                     await loadFwStatus();

@@ -121,7 +121,7 @@ async function saveFile() {
         const form = new FormData();
         form.append('path', filePath);
         form.append('content', editor.value);
-        const resp = await fetch('/api/files/save', { method: 'POST', body: form });
+        const resp = await csrfFetch('/api/files/save', { method: 'POST', body: form });
         const data = await resp.json();
         if (!data.success) {
             error.textContent = 'Error: ' + (data.error || 'Failed to save file');

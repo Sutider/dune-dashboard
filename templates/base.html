@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>{% block title %}Dune Awakening Server Dashboard{% endblock %}</title>
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
@@ -40,8 +40,15 @@
             <div class="update-spinner"></div>
         </div>
     </div>
-    {% block scripts %}{% endblock %}
     <script>
+    const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+
+    async function csrfFetch(url, options = {}) {
+        options.headers = options.headers || {};
+        options.headers['X-CSRFToken'] = csrfToken;
+        return fetch(url, options);
+    }
+
     let updateDismissed = false;
     async function checkForUpdate() {
         if (updateDismissed) return;
@@ -58,7 +65,7 @@
         btn.textContent = 'Checking...';
         btn.disabled = true;
         try {
-            const resp = await fetch('/api/update/check', { method: 'POST' });
+            const resp = await csrfFetch('/api/update/check', { method: 'POST' });
             const data = await resp.json();
             if (data.available) {
                 document.getElementById('update-banner').style.display = 'flex';
@@ -84,7 +91,7 @@
         banner.style.display = 'none';
         progress.style.display = 'flex';
         try {
-            const resp = await fetch('/api/update/apply', { method: 'POST' });
+            const resp = await csrfFetch('/api/update/apply', { method: 'POST' });
             const data = await resp.json();
             statusText.textContent = data.message || 'Applying update...';
             if (data.success) {
@@ -101,26 +108,8 @@
     }
     setInterval(checkForUpdate, 60000);
     checkForUpdate();
-
-    // CSRF: Attach token to all non-GET fetch requests
-    (function() {
-        const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content;
-        if (!csrfToken) return;
-        const origFetch = window.fetch;
-        window.fetch = function() {
-            let [resource, config] = arguments;
-            if (!config) config = {};
-            if (!config.headers) config.headers = {};
-            const method = (config.method || 'GET').toUpperCase();
-            if (method !== 'GET' && method !== 'HEAD' && method !== 'OPTIONS') {
-                if (typeof config.headers === 'object') {
-                    config.headers['X-CSRFToken'] = csrfToken;
-                }
-            }
-            return origFetch(resource, config);
-        };
-    })();
     </script>
+    {% block scripts %}{% endblock %}
     <style>
     .update-banner { background: var(--bg-hover); border-bottom: 2px solid var(--accent); padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; font-size: 13px; color: var(--text); }
     .update-actions { display: flex; gap: 8px; }
