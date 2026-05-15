@@ -43,6 +43,7 @@ If you're testing this project, grab builds from nightly for the latest features
 - **Let's Encrypt**: Optionally set up publicly trusted SSL certs during setup with automatic renewal via certbot.
 - **Settings Migration**: Automatically adds new configuration options to `settings.yaml` when updating, so you never miss a feature.
 - **Cross-Platform**: Works on Windows (`.bat`/`.ps1`) and Linux/macOS (`.sh`).
+- **Organized Logging**: Launcher logs are automatically categorized by type (SSH, K8s, database, etc.) with sensitive data redacted. Old logs are cleaned up after 30 days, oversized files are truncated at 10 MB.
 
 ## License
 
@@ -221,3 +222,44 @@ DuneDashboard/
 - SSH keys are copied to `%TEMP%` with restricted permissions during startup.
 - All database queries use parameterized statements to prevent SQL injection.
 - Dashboard authentication is required by default.
+
+## Logging
+
+The launcher automatically organizes and sanitizes logs to protect sensitive information.
+
+### Log Categories
+
+```
+logs/
+├── launcher/
+│   ├── general/        # General launcher events
+│   ├── ssh/            # SSH tunnel and connection logs
+│   ├── k8s/            # Kubernetes operations
+│   ├── database/       # Database port-forward and connections
+│   ├── dashboard/      # Dashboard startup and runtime
+│   ├── setup/          # Setup wizard logs
+│   └── diagnostics/    # Diagnostic tool output
+├── app.log             # Python application log (rotating, 10 MB max, 5 backups)
+└── audit.log           # Security audit log (rotating, 10 MB max, 5 backups)
+```
+
+### Sensitive Data Redaction
+
+All launcher log files are automatically sanitized before writing. The following are redacted:
+- IP addresses → `<IP_REDACTED>`
+- JWT tokens → `<JWT_REDACTED>`
+- Base64 secrets → `<BASE64_REDACTED>`
+- SSH key paths → `<SSH_KEY_PATH_REDACTED>`
+- K8s namespaces → `<NAMESPACE_REDACTED>`
+- Host IDs → `<HOST_ID_REDACTED>`
+- Passwords/tokens → `<REDACTED>`
+- Funcom IDs → `<FUNCOM_ID_REDACTED>`
+
+Console output is **not** sanitized so you can see full details during operation.
+
+### Automatic Cleanup
+
+- Log files older than **30 days** are deleted
+- Files exceeding **10 MB** are truncated (keeps last 5000 lines)
+- Empty category directories are removed
+- Cleanup runs automatically on every launcher start

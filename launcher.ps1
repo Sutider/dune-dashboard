@@ -7,6 +7,211 @@ $ErrorActionPreference = "Continue"
 $ProjectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location -LiteralPath $ProjectRoot
 
+# ── Logging Setup ─────────────────────────────────────────────────────
+
+$LogDir = Join-Path $ProjectRoot "logs"
+$LauncherLogDir = Join-Path $LogDir "launcher"
+if (-not (Test-Path $LauncherLogDir)) {
+    New-Item -ItemType Directory -Path $LauncherLogDir -Force | Out-Null
+}
+
+$LogDate = Get-Date -Format "yyyy-MM-dd"
+$LogTime = Get-Date -Format "HH-mm-ss"
+
+# ── Log Sanitization ──────────────────────────────────────────────────
+# Redacts identifiable information before writing to log files.
+# Console output remains unchanged for user visibility.
+
+# Track sensitive values dynamically discovered during runtime
+$SensitiveValues = @{
+    ServerIP = $null
+    SSHKeyPath = $null
+    Namespace = $null
+    HostID = $null
+    Tokens = @()
+    Passwords = @()
+    FuncomIDs = @()
+    JWTs = @()
+}
+
+function Register-SensitiveValue {
+    param(
+        [string]$Key,
+        [string]$Value
+    )
+    if ($Value -and $Value.Length -gt 3) {
+        $SensitiveValues[$Key] = $Value
+    }
+}
+
+function Sanitize-LogMessage {
+    param([string]$Message)
+    if (-not $Message) { return $Message }
+
+    $sanitized = $Message
+
+    # JWT tokens (eyJ...)
+    $sanitized = $sanitized -replace 'eyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+', '<JWT_REDACTED>'
+
+    # Base64-encoded secrets (long base64 strings ending with ==)
+    $sanitized = $sanitized -replace '[A-Za-z0-9+/]{30,}={0,2}', {
+        $match = $args[0].Value
+        if ($match -match '^[A-Za-z0-9+/]{20,}={0,2}$') {
+            return '<BASE64_REDACTED>'
+        }
+        return $match
+    }
+
+    # IP addresses (IPv4)
+    $sanitized = $sanitized -replace '\b(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\b', '<IP_REDACTED>'
+
+    # SSH key file paths
+    $sanitized = $sanitized -replace '(?:[A-Z]:\\|~)[^\s]*sshKey[^\s]*', '<SSH_KEY_PATH_REDACTED>'
+    $sanitized = $sanitized -replace '(?:[A-Z]:\\|~)[^\s]*dune-tunnel-key[^\s]*', '<SSH_KEY_PATH_REDACTED>'
+    $sanitized = $sanitized -replace '(?:[A-Z]:\\|~)[^\s]*id_ed25519[^\s]*', '<SSH_KEY_PATH_REDACTED>'
+    $sanitized = $sanitized -replace '(?:[A-Z]:\\|~)[^\s]*id_rsa[^\s]*', '<SSH_KEY_PATH_REDACTED>'
+
+    # K8s namespace (funcom-seabass-...)
+    $sanitized = $sanitized -replace 'funcom-seabass-[A-Za-z0-9-]+', '<NAMESPACE_REDACTED>'
+
+    # Host IDs (B17A5F036D1F7882 format - 16 hex chars)
+    $sanitized = $sanitized -replace '\b[A-F0-9]{16}\b', '<HOST_ID_REDACTED>'
+
+    # Service auth tokens in env var format
+    $sanitized = $sanitized -replace '(?:RMQ_HTTP_TOKEN_AUTH_SECRET|ServiceAuthToken|ServiceAuthKey)=.+', '$1=<TOKEN_REDACTED>'
+
+    # Password-like patterns
+    $sanitized = $sanitized -replace '(?i)(?:password|passwd|pwd|secret|token)\s*[=:]\s*\S+', '$1=<REDACTED>'
+
+    # Funcom IDs (FID-xxxxx or similar patterns)
+    $sanitized = $sanitized -replace '\bFID-[A-Za-z0-9-]+\b', '<FUNCOM_ID_REDACTED>'
+
+    # Dynamic sensitive values registered at runtime
+    foreach ($key in $SensitiveValues.Keys) {
+        $val = $SensitiveValues[$key]
+        if ($val -and $val.Length -gt 4) {
+            $escapedVal = [regex]::Escape($val)
+            $sanitized = $sanitized -replace $escapedVal, "<$key`_REDACTED>"
+        }
+    }
+
+    return $sanitized
+}
+
+function Write-Log {
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$Message,
+        [ValidateSet("INFO", "WARN", "ERROR", "DEBUG")]
+        [string]$Level = "INFO",
+        [ValidateSet("general", "ssh", "k8s", "database", "dashboard", "setup", "diagnostics")]
+        [string]$Category = "general"
+    )
+    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    $logEntry = "[$timestamp] [$Level] $Message"
+    $sanitizedEntry = Sanitize-LogMessage -Message $logEntry
+    
+    $categoryDir = Join-Path $LauncherLogDir $category
+    if (-not (Test-Path $categoryDir)) {
+        New-Item -ItemType Directory -Path $categoryDir -Force | Out-Null
+    }
+    
+    $logFile = Join-Path $categoryDir "$LogDate.log"
+    Add-Content -Path $logFile -Value $sanitizedEntry -Encoding UTF8
+    
+    switch ($Level) {
+        "ERROR" { Write-Host $logEntry -ForegroundColor Red }
+        "WARN"  { Write-Host $logEntry -ForegroundColor Yellow }
+        "DEBUG" { Write-Host $logEntry -ForegroundColor DarkGray }
+        default { Write-Host $logEntry -ForegroundColor White }
+    }
+}
+
+function Write-LogNoConsole {
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$Message,
+        [ValidateSet("INFO", "WARN", "ERROR", "DEBUG")]
+        [string]$Level = "INFO",
+        [ValidateSet("general", "ssh", "k8s", "database", "dashboard", "setup", "diagnostics")]
+        [string]$Category = "general"
+    )
+    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    $logEntry = "[$timestamp] [$Level] $Message"
+    $sanitizedEntry = Sanitize-LogMessage -Message $logEntry
+    
+    $categoryDir = Join-Path $LauncherLogDir $category
+    if (-not (Test-Path $categoryDir)) {
+        New-Item -ItemType Directory -Path $categoryDir -Force | Out-Null
+    }
+    
+    $logFile = Join-Path $categoryDir "$LogDate.log"
+    Add-Content -Path $logFile -Value $sanitizedEntry -Encoding UTF8
+}
+
+function Start-LogSession {
+    param([string]$SessionName = "Launcher Session")
+    $sessionFile = Join-Path $LauncherLogDir "$LogDate-$LogTime-session.log"
+    $header = "=" * 60
+    $sanitizedName = Sanitize-LogMessage -Message $SessionName
+    Add-Content -Path $sessionFile -Value (Sanitize-LogMessage -Message $header) -Encoding UTF8
+    Add-Content -Path $sessionFile -Value "$sanitizedName - $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -Encoding UTF8
+    Add-Content -Path $sessionFile -Value (Sanitize-LogMessage -Message $header) -Encoding UTF8
+    return $sessionFile
+}
+
+# ── Log Rotation & Cleanup ────────────────────────────────────────────
+# Prevents logs from growing unbounded.
+# - Deletes log files older than $LogRetentionDays
+# - Truncates current logs exceeding $LogMaxSizeMB
+
+$LogRetentionDays = 30
+$LogMaxSizeMB = 10
+
+function Invoke-LogCleanup {
+    $cutoffDate = (Get-Date).AddDays(-$LogRetentionDays)
+    $maxBytes = $LogMaxSizeMB * 1MB
+    $deletedCount = 0
+    $truncatedCount = 0
+
+    if (-not (Test-Path $LauncherLogDir)) { return }
+
+    # Delete old log files by creation date
+    Get-ChildItem -Path $LauncherLogDir -Recurse -File -ErrorAction SilentlyContinue | ForEach-Object {
+        if ($_.CreationTime -lt $cutoffDate) {
+            Remove-Item -LiteralPath $_.FullName -Force -ErrorAction SilentlyContinue
+            $deletedCount++
+        }
+    }
+
+    # Truncate oversized current logs (keep last 5000 lines)
+    Get-ChildItem -Path $LauncherLogDir -Recurse -File -ErrorAction SilentlyContinue | ForEach-Object {
+        if ($_.Length -gt $maxBytes) {
+            try {
+                $lines = Get-Content -LiteralPath $_.FullName -Tail 5000
+                $header = "[LOG ROTATED] Previous entries truncated due to size limit ($LogMaxSizeMB MB)`n"
+                $header + ($lines -join "`n") | Set-Content -LiteralPath $_.FullName -Encoding UTF8 -Force
+                $truncatedCount++
+            } catch {}
+        }
+    }
+
+    # Remove empty category directories
+    Get-ChildItem -Path $LauncherLogDir -Directory -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
+        $items = Get-ChildItem -LiteralPath $_.FullName -Force -ErrorAction SilentlyContinue
+        if ($items.Count -eq 0) {
+            Remove-Item -LiteralPath $_.FullName -Force -ErrorAction SilentlyContinue
+        }
+    }
+
+    if ($deletedCount -gt 0 -or $truncatedCount -gt 0) {
+        Write-LogNoConsole -Message "Log cleanup: deleted $deletedCount old files, truncated $truncatedCount oversized files" -Category "general"
+    }
+}
+
+# Run cleanup at launcher startup
+Invoke-LogCleanup
+
 # ── Helper Functions ──────────────────────────────────────────────────
 
 function Show-Banner {
@@ -1501,6 +1706,15 @@ print(json.dumps(s))
     $DashboardPort = [int]$settings.dashboard.port
     $DirectorPort = [int]$settings.director.port
 
+    # Register sensitive values for log sanitization
+    Register-SensitiveValue -Key "ServerIP" -Value $ServerHost
+    Register-SensitiveValue -Key "Namespace" -Value $Namespace
+    Register-SensitiveValue -Key "DBPassword" -Value $settings.database.password
+    Register-SensitiveValue -Key "DBUser" -Value $settings.database.user
+    Register-SensitiveValue -Key "DashboardSecret" -Value $settings.dashboard.secret_key
+    Register-SensitiveValue -Key "AuthSecret" -Value $settings.auth.secret_key
+    Register-SensitiveValue -Key "DirectorToken" -Value $settings.director.token
+
     # Find SSH key
     function Test-SshKeyForStart($keyPath, $targetServer) {
         if (-not (Test-Path $keyPath)) { return $false }
@@ -1516,6 +1730,7 @@ print(json.dumps(s))
 
     if ($SSHKeySrc -and $SSHKeySrc -ne 'null' -and -not [string]::IsNullOrEmpty($SSHKeySrc)) {
         if (Test-SshKeyForStart $SSHKeySrc ($SSHUser + '@' + $ServerHost)) {
+            Register-SensitiveValue -Key "SSHKeyPath" -Value $SSHKeySrc
             Write-Host "  SSH Key: Using key from settings.yaml" -ForegroundColor Green
         } else {
             Write-Host "  SSH Key: Key in settings.yaml failed, searching..." -ForegroundColor Yellow
@@ -1538,6 +1753,7 @@ print(json.dumps(s))
             if ($kp -ne $SSHKeySrc -and (Test-Path $kp)) {
                 if (Test-SshKeyForStart $kp ($SSHUser + '@' + $ServerHost)) {
                     $SSHKeySrc = $kp
+                    Register-SensitiveValue -Key "SSHKeyPath" -Value $kp
                     Write-Host "  SSH Key: Found working key at $kp" -ForegroundColor Green
                     break
                 }
@@ -1587,7 +1803,13 @@ print(json.dumps(s))
     Write-Host "============================================================" -ForegroundColor Cyan
     Write-Host ""
 
+    Write-Log -Message "Dashboard launch started" -Category "general"
+    Write-Log -Message "Server: $ServerHost, User: $SSHUser" -Category "ssh"
+    Write-Log -Message "Ports: DB=$LocalPort, Director=$DirectorPort, Dashboard=$DashboardPort" -Category "general"
+    Write-Log -Message "Namespace: $Namespace" -Category "k8s"
+
     # Kill existing SSH tunnels on the DB/Director ports
+    Write-Log -Message "Cleaning up existing SSH tunnels on ports $LocalPort and $DirectorPort" -Category "ssh"
     Get-NetTCPConnection -LocalPort $LocalPort -ErrorAction SilentlyContinue | ForEach-Object {
         Get-Process -Id $_.OwningProcess -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -eq 'ssh' } | Stop-Process -Force -ErrorAction SilentlyContinue
     }
@@ -1598,6 +1820,7 @@ print(json.dumps(s))
 
     # [1/4] SSH Tunnel
     Write-Host "[1/4] Starting SSH tunnel (localhost:$LocalPort -> VM)..." -ForegroundColor Yellow
+    Write-Log -Message "Starting SSH tunnel to ${SSHUser}@${ServerHost}" -Category "ssh"
     $sshArgs = @(
         "-i", $SSHKey,
         "-o", "StrictHostKeyChecking=accept-new",
@@ -1614,6 +1837,7 @@ print(json.dumps(s))
         Start-Sleep -Seconds 1
         if ($sshTunnel.HasExited) {
             Write-Host "[ERROR] SSH tunnel exited (code: $($sshTunnel.ExitCode))" -ForegroundColor Red
+            Write-Log -Message "SSH tunnel exited unexpectedly (code: $($sshTunnel.ExitCode))" -Level "ERROR" -Category "ssh"
             Write-Host ""
             Write-Host "  The SSH tunnel could not connect to your game server." -ForegroundColor Yellow
             Write-Host ""
@@ -1635,6 +1859,7 @@ print(json.dumps(s))
     }
     if (-not $connected) {
         Write-Host "[ERROR] SSH tunnel did not connect within 30 seconds" -ForegroundColor Red
+        Write-Log -Message "SSH tunnel failed to connect within 30 seconds" -Level "ERROR" -Category "ssh"
         Write-Host ""
         Write-Host "  The SSH tunnel could not establish a connection." -ForegroundColor Yellow
         Write-Host ""
@@ -1647,13 +1872,16 @@ print(json.dumps(s))
         Stop-Process -Id $sshTunnel.Id -Force -ErrorAction SilentlyContinue
         return
     }
-    Write-Host "[OK]   SSH tunnel up on localhost:$LocalPort (DB) and localhost:$DirectorPort (Director)" -ForegroundColor Green
+    Write-Host "[OK]   SSH tunnel up on localhost:$LocalPort (DB), localhost:$DirectorPort (Director)" -ForegroundColor Green
+    Write-Log -Message "SSH tunnel connected successfully" -Category "ssh"
 
     # [2/4] DB Port-Forward
     Write-Host "[2/4] Starting DB port-forward on VM..." -ForegroundColor Yellow
+    Write-Log -Message "Starting DB port-forward in namespace: $Namespace" -Category "k8s"
 
     if (-not $Namespace -or $Namespace -eq '') {
         Write-Host "[ERROR] Kubernetes namespace is empty." -ForegroundColor Red
+        Write-Log -Message "Kubernetes namespace is empty, cannot proceed" -Level "ERROR" -Category "k8s"
         Write-Host ""
         Write-Host "  The dashboard needs to know your Kubernetes namespace to connect to the database." -ForegroundColor Yellow
         Write-Host ""
@@ -1675,10 +1903,12 @@ print(json.dumps(s))
         if ($dbSvc) {
             $DBService = $dbSvc -replace 'service/', ''
             Write-Host "  Found DB service: $DBService" -ForegroundColor Green
+            Write-Log -Message "Auto-detected DB service: $DBService" -Category "k8s"
         }
     }
 
     $RemotePort = 15432
+    Write-Log -Message "Starting port-forward: ${LocalPort}:${RemotePort} on service $DBService" -Category "database"
     $pfCmd = "nohup sudo kubectl port-forward -n $Namespace svc/$DBService $LocalPort`:$RemotePort > /tmp/pf.log 2>`&1 `"&`""
     ssh -i $SSHKey -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=30 "${SSHUser}@${ServerHost}" $pfCmd 2>$null
     Start-Sleep -Seconds 2
@@ -1692,15 +1922,18 @@ print(json.dumps(s))
 
     # Check if BGD deployment is running, scale up if needed
     $bgdDeploy = "${Namespace}-bgd-deploy"
+    Write-Log -Message "Checking BGD deployment status: $bgdDeploy" -Category "k8s"
     $bgdReady = ssh -i $SSHKey -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 ${SSHUser}@${ServerHost} "sudo kubectl get deployment $bgdDeploy -n $Namespace -o jsonpath='{.status.readyReplicas}'" 2>$null
     if (-not $bgdReady -or $bgdReady -eq '0' -or $bgdReady -eq '') {
         Write-Host "  BGD deployment is scaled down, starting..." -ForegroundColor Yellow
+        Write-Log -Message "BGD deployment scaled down, scaling to 1 replica" -Category "k8s"
         $scaleOut = ssh -i $SSHKey -o StrictHostKeyChecking=accept-new -o ConnectTimeout=30 ${SSHUser}@${ServerHost} "sudo kubectl scale deployment $bgdDeploy -n $Namespace --replicas=1" 2>$null
         Write-Host "  Waiting for BGD pod to be ready..." -ForegroundColor Yellow
         Start-Sleep -Seconds 15
     }
 
     $directorRemotePort = 11717
+    Write-Log -Message "Starting director port-forward: ${DirectorPort}:${directorRemotePort} on service $bgdSvc" -Category "k8s"
     $directorCmd = "nohup sudo kubectl port-forward -n $Namespace svc/$bgdSvc $DirectorPort`:$directorRemotePort > /tmp/director_pf.log 2>`&1 `"&`""
     ssh -i $SSHKey -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=30 "${SSHUser}@${ServerHost}" $directorCmd 2>$null
 
