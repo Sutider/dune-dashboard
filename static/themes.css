@@ -349,13 +349,13 @@
     display: none;
     position: absolute;
     right: 0;
-    background: var(--card-bg);
+    background: #252530;
     min-width: 180px;
-    box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.4);
     border-radius: 8px;
     z-index: 1000;
     padding: 8px 0;
-    border: 1px solid var(--border);
+    border: 1px solid #404050;
 }
 
 .theme-dropdown:hover .theme-dropdown-content {
@@ -368,39 +368,17 @@
     gap: 10px;
     padding: 10px 16px;
     cursor: pointer;
-    color: var(--text);
+    color: #d0d0d8;
     font-size: 13px;
     transition: background 0.15s;
 }
 
 .theme-option:hover {
-    background: var(--hover);
+    background: rgba(255,255,255,0.1);
 }
 
 .theme-option.active {
     background: var(--primary);
-    color: #fff;
-}
-
-/* Active state text color based on theme brightness */
-[data-theme="default"] .theme-option.active,
-[data-theme="atreides"] .theme-option.active,
-[data-theme="fremen"] .theme-option.active,
-[data-theme="sardaukar"] .theme-option.active,
-[data-theme="mentat"] .theme-option.active,
-[data-theme="ordos"] .theme-option.active,
-[data-theme="ix"] .theme-option.active,
-[data-theme="choam"] .theme-option.active,
-[data-theme="corrino"] .theme-option.active,
-[data-theme="bene-gesserit"] .theme-option.active {
-    color: #1a1a1a;
-}
-
-/* Dark themes get white text */
-[data-theme="harkonnen"] .theme-option.active,
-[data-theme="spacing-guild"] .theme-option.active,
-[data-theme="emperor"] .theme-option.active,
-[data-theme="tleilax"] .theme-option.active {
     color: #fff;
 }
 
@@ -412,25 +390,6 @@
 [data-theme="harkonnen"] .theme-dropdown-content,
 [data-theme="spacing-guild"] .theme-dropdown-content,
 [data-theme="tleilax"] .theme-dropdown-content,
-[data-theme="emperor"] .theme-dropdown-content {
-    background: #252530;
-    border-color: #404050;
-}
-
-[data-theme="harkonnen"] .theme-dropdown-content .theme-option,
-[data-theme="spacing-guild"] .theme-dropdown-content .theme-option,
-[data-theme="tleilax"] .theme-dropdown-content .theme-option,
-[data-theme="emperor"] .theme-dropdown-content .theme-option {
-    color: #e0e0e8;
-}
-
-[data-theme="harkonnen"] .theme-dropdown-content .theme-option:hover,
-[data-theme="spacing-guild"] .theme-dropdown-content .theme-option:hover,
-[data-theme="tleilax"] .theme-dropdown-content .theme-option:hover,
-[data-theme="emperor"] .theme-dropdown-content .theme-option:hover {
-    background: rgba(255,255,255,0.1);
-}
-
 .theme-swatch {
     width: 20px;
     height: 20px;
