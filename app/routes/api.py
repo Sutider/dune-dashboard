@@ -19,12 +19,16 @@ def register_api_routes(app, services, settings):
     admin_svc = services['admin']
     vehicle_svc = services['vehicle']
 
-    limiter = Limiter(
-        app=app,
-        key_func=get_remote_address,
-        default_limits=["200 per day", "50 per hour"],
-        storage_uri="memory://",
-    )
+    # Get or create rate limiter - use existing one from factory if available
+    if not hasattr(app, 'limiter'):
+        limiter = Limiter(
+            app=app,
+            key_func=get_remote_address,
+            default_limits=["200 per day", "50 per hour"],
+            storage_uri="memory://",
+        )
+    else:
+        limiter = app.limiter
 
     # Only require login if auth is enabled
     auth_req = login_required if settings.get('auth', {}).get('enabled', True) else lambda f: f

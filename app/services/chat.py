@@ -98,20 +98,34 @@ class ChatService:
         if has_history:
             return 0
 
+        if not namespace:
+            logger.warning("Cannot catch up - kubernetes namespace not set")
+            return 0
+
         pod_name = self.k8s.get_text_router_pod()
         if not pod_name:
             logger.warning("Cannot catch up - no text-router pod found")
             return 0
 
-        out, err, rc = self.ssh.run(
-            f"sudo kubectl logs -n {namespace} {pod_name} --tail=2000 2>/dev/null | "
-            "grep 'CLOG.*TextChat' | grep -v 'Starting filtering' | grep -v 'Skipping filtering' | grep -v 'Redirected message'",
-            timeout=30
-        )
+        logger.info(f"Attempting to catch up chat from pod: {pod_name}")
+
+        # Get pod logs first, then filter locally
+        log_cmd = f"sudo kubectl logs -n {namespace} {pod_name} --tail=2000 2>/dev/null"
+        out, err, rc = self.ssh.run(log_cmd, timeout=30)
+
+        if rc != 0 or not out:
+            logger.warning(f"Cannot catch up - failed to get pod logs: {err}")
+            return 0
+
+        # Filter for chat messages locally
+        lines = [line for line in out.split('\n') if 'CLOG' in line and 'TextChat' in line]
+        lines = [line for line in lines if 'Starting filtering' not in line]
+        lines = [line for line in lines if 'Skipping filtering' not in line]
+        lines = [line for line in lines if 'Redirected message' not in line]
 
         messages = []
         seen = set()
-        for line in (out or '').strip().split('\n'):
+        for line in lines:
             if not line.strip():
                 continue
             try:

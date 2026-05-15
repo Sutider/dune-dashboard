@@ -404,15 +404,22 @@ class AdminService:
             for name, sql in indexes:
                 try:
                     cur.execute(sql)
+                    conn.commit()
                     created.append(name)
                 except Exception as e:
                     logger.warning(f"Index {name} failed: {e}")
-            conn.commit()
+                    try:
+                        conn.rollback()
+                    except Exception:
+                        pass
             return True, created, None
         except Exception as e:
             logger.error(f"Failed to create indexes: {e}")
             if conn:
-                conn.rollback()
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
             return False, [], str(e)
         finally:
             if cur:

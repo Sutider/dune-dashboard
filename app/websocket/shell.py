@@ -12,7 +12,7 @@ try:
 except ImportError:
     HAS_PARAMIKO = False
 
-from flask import request
+from flask import request, session
 from flask_socketio import emit
 
 logger = logging.getLogger(__name__)
@@ -27,6 +27,14 @@ def register_websocket_handlers(socketio, settings):
 
     @socketio.on('shell_create')
     def handle_shell_create(data):
+        # Check if user is authenticated via Flask-Login session
+        auth_enabled = settings.get('auth', {}).get('enabled', True)
+        if auth_enabled:
+            # Flask-Login stores user ID in session['_user_id']
+            if not session.get('_user_id'):
+                logger.warning(f"WebSocket shell rejected: unauthenticated (sid={request.sid})")
+                return emit('shell_created', {'success': False, 'error': 'Authentication required'})
+
         shell_type = data.get('type', 'vm')
         shell_id = request.sid
 

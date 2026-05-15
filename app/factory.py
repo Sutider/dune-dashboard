@@ -7,10 +7,9 @@ import logging.handlers
 import threading
 from flask import Flask, request
 from flask_socketio import SocketIO
-from flask_talisman import Talisman
 from flask_limiter import Limiter
-from flask_limiter.util import get_remote_address
 from flask_wtf.csrf import CSRFProtect
+from flask_limiter.util import get_remote_address
 
 from app.config import load_settings
 from app.services.database import DatabaseService
@@ -42,10 +41,11 @@ def create_app(settings_path=None):
     app.config['SECRET_KEY'] = settings['dashboard']['secret_key']
     app.config['SESSION_COOKIE_HTTPONLY'] = True
     app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
-    app.config['SESSION_COOKIE_SECURE'] = True  # Always enforce secure cookies
+    app.config['WTF_CSRF_ENABLED'] = True
+    app.config['WTF_CSRF_TIME_LIMIT'] = None
 
-    # Initialize CSRF protection
     csrf = CSRFProtect(app)
+    csrf.init_app(app)
 
     ssl_enabled = bool(
         settings['dashboard'].get('ssl_cert')
@@ -54,8 +54,23 @@ def create_app(settings_path=None):
         and settings['dashboard']['ssl_key'] != 'null'
     )
 
+    # Set SESSION_COOKIE_SECURE conditional on SSL being enabled
+    app.config['SESSION_COOKIE_SECURE'] = ssl_enabled
+
+    # Add security headers manually (replaces deprecated Flask-Talisman)
     if not settings['dashboard']['debug']:
-        Talisman(app, content_security_policy=None, force_https=ssl_enabled)
+        @app.after_request
+        def add_security_headers(response):
+            # HSTS - only when SSL is enabled
+            if ssl_enabled:
+                response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+            # Prevent clickjacking
+            response.headers['X-Frame-Options'] = 'SAMEORIGIN'
+            # Prevent MIME-type sniffing
+            response.headers['X-Content-Type-Options'] = 'nosniff'
+            # XSS protection
+            response.headers['X-XSS-Protection'] = '1; mode=block'
+            return response
 
     _setup_logging(settings)
 
@@ -73,6 +88,15 @@ def create_app(settings_path=None):
         max_conn=settings['database']['max_connections']
     )
     db_service.ensure_tables()
+
+    # Create performance indexes if they don't exist
+    try:
+        admin_svc_for_indexes = AdminService(db_service, None)
+        success, created, error = admin_svc_for_indexes.create_indexes()
+        if success and created:
+            logging.info(f"Created {len(created)} database indexes")
+    except Exception as e:
+        logging.warning(f"Could not create indexes: {e}")
 
     ssh_service = SSHService(
         host=settings['server']['host'],
