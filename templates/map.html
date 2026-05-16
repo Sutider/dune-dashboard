@@ -75,8 +75,6 @@
     height: 100%;
     overflow: auto;
     cursor: grab;
-    position: relative;
-    z-index: 1;
 }
 
 .map-scroll.dragging {
@@ -89,18 +87,16 @@
     margin: 24px;
     background: #0d0f0f;
     box-shadow: 0 10px 34px rgba(0, 0, 0, 0.35);
-    display: inline-block;
 }
 
 .map-image {
-    position: relative;
+    position: absolute;
+    inset: 0;
     width: 100%;
     height: 100%;
     object-fit: contain;
     user-select: none;
     pointer-events: none;
-    display: block;
-    transform-origin: top left;
 }
 
 .map-image-credit {
@@ -430,7 +426,7 @@
                 <h3 class="panel-title">Zoom</h3>
                 <div class="map-controls">
                     <button type="button" id="zoom-out" title="Zoom out">-</button>
-                    <input type="range" id="zoom-slider" min="15" max="350" value="15" step="10">
+                    <input type="range" id="zoom-slider" min="15" max="350" value="100" step="10">
                     <button type="button" id="zoom-in" title="Zoom in">+</button>
                 </div>
                 <div class="zoom-readout" id="zoom-readout">100%</div>
@@ -542,13 +538,8 @@ function setZoom(nextZoom, keepCenter = true) {
 
     currentZoom = Math.min(3.5, Math.max(0.15, nextZoom));
     
-    const scale = currentZoom;
-    els.canvas.style.transform = `scale(${scale})`;
-    els.canvas.style.transformOrigin = 'top left';
-    els.canvas.style.width = '100%';
-    els.canvas.style.height = '100%';
-    els.canvas.style.display = 'block';
-    
+    els.canvas.style.width = `${map.width * currentZoom}px`;
+    els.canvas.style.height = `${map.height * currentZoom}px`;
     els.zoomSlider.value = Math.round(currentZoom * 100);
     els.zoomReadout.textContent = `${Math.round(currentZoom * 100)}%`;
 }

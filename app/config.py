@@ -85,7 +85,7 @@ DEFAULTS = {
             },
             'flip_y': False,
             'image_size': {'width': 8000, 'height': 8000},
-            'default_zoom': 0.15
+            'default_zoom': 1.0
         },
         'HaggaBasin': {
             'image': 'maps/HaggaBasin_8k.webp',
@@ -98,7 +98,7 @@ DEFAULTS = {
             },
             'flip_y': False,
             'image_size': {'width': 8000, 'height': 8000},
-            'default_zoom': 0.15
+            'default_zoom': 1.0
         }
     },
 }
