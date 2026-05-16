@@ -95,9 +95,17 @@ def check_db_port_forward(settings):
         print(f"  [OK] Database port-forward listening on localhost:{port}")
         return True
     except Exception:
-        print(f"  [FAIL] Cannot connect to localhost:{port}")
-        print("         NOTE: This is expected if the launcher hasn't started yet.")
-        print("         Run the launcher and these will connect automatically.")
+        print("")
+        print("+----------------------------------------------------------+")
+        print("|  [FAIL] Database port-forward not connected               |")
+        print("|                                                          |")
+        print("|  *** THIS IS NOT CRITICAL ***                            |")
+        print("|  The database port-forward requires the launcher to be   |")
+        print("|  running. If you're just running diagnostics standalone,  |")
+        print("|  this will fail. Start the launcher first - it sets up    |")
+        print("|  the SSH tunnel and port-forwards automatically.         |")
+        print("+----------------------------------------------------------+")
+        print("")
         return False
 
 
