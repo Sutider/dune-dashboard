@@ -85,7 +85,8 @@ class SSHService:
             err = stderr.read().decode('utf-8', errors='replace')
             rc = stdout.channel.recv_exit_status()
             if rc != 0:
-                logger.warning("SSH command failed (rc=%d): %s", rc, err[:200])
+                cmd_short = command[:80] + '...' if len(command) > 80 else command
+                logger.warning("SSH command failed (rc=%d): cmd=%s err=%s", rc, cmd_short, err[:100] if err else 'none')
             return out, err, rc
         except paramiko.SSHException as e:
             logger.error("SSH command error: %s", e)

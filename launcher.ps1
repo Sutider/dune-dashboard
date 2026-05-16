@@ -160,6 +160,57 @@ function Start-LogSession {
     return $sessionFile
 }
 
+function Write-Step {
+    param([string]$Name, [string]$Category = "general")
+    if (-not $global:StepCounter) { $global:StepCounter = @{} }
+    if (-not $global:StepCounter[$Category]) { $global:StepCounter[$Category] = 0 }
+    $global:StepCounter[$Category]++
+    $num = $global:StepCounter[$Category]
+    Write-Log -Message "[$num] $Name" -Level "INFO" -Category $Category
+}
+
+function Write-Success {
+    param([string]$Message, [string]$Category = "general")
+    Write-Log -Message $Message -Level "INFO" -Category $Category
+}
+
+function Write-DebugLog {
+    param([string]$Message, [string]$Category = "general")
+    Write-Log -Message $Message -Level "DEBUG" -Category $Category
+}
+
+function Write-Sep {
+    param([string]$Title, [string]$Category = "general")
+    $sep = "-" * 55
+    $msg = if ($Title) { "$Title  $sep" } else { $sep }
+    $logFile = Join-Path $LauncherLogDir "$Category\$LogDate.log"
+    if (-not (Test-Path (Split-Path $logFile))) {
+        New-Item -ItemType Directory -Path (Split-Path $logFile) -Force | Out-Null
+    }
+    Add-Content -Path $logFile -Value $msg -Encoding UTF8
+    Write-Host $msg -ForegroundColor DarkGray
+}
+
+$Script:LogIndent = 0
+
+function Push-Indent {
+    $Script:LogIndent++
+}
+
+function Pop-Indent {
+    $Script:LogIndent = [Math]::Max(0, $Script:LogIndent - 1)
+}
+
+function Write-LogStyled {
+    param(
+        [string]$Message,
+        [string]$Level = "INFO",
+        [string]$Category = "general"
+    )
+    $prefix = if ($Script:LogIndent -gt 0) { "  " * $Script:LogIndent } else { "" }
+    Write-Log -Message "$prefix$Message" -Level $Level -Category $Category
+}
+
 # ── Log Rotation & Cleanup ────────────────────────────────────────────
 # Prevents logs from growing unbounded.
 # - Deletes log files older than $LogRetentionDays
@@ -1803,8 +1854,8 @@ print(json.dumps(s))
     Write-Host "============================================================" -ForegroundColor Cyan
     Write-Host ""
 
-    Write-Log -Message "Dashboard launch started" -Category "general"
-    Write-Log -Message "Server: $ServerHost, User: $SSHUser" -Category "ssh"
+    Write-Sep -Title "Dashboard Launch" -Category "general"
+    Write-Log -Message "Server: $ServerHost, User: $SSHUser" -Category "general"
     Write-Log -Message "Ports: DB=$LocalPort, Director=$DirectorPort, Dashboard=$DashboardPort" -Category "general"
     Write-Log -Message "Namespace: $Namespace" -Category "k8s"
 
@@ -1819,6 +1870,7 @@ print(json.dumps(s))
     Start-Sleep 1
 
     # [1/4] SSH Tunnel
+    Write-Step -Name "SSH Tunnel" -Category "ssh"
     Write-Host "[1/4] Starting SSH tunnel (localhost:$LocalPort -> VM)..." -ForegroundColor Yellow
     Write-Log -Message "Starting SSH tunnel to ${SSHUser}@${ServerHost}" -Category "ssh"
     $sshArgs = @(

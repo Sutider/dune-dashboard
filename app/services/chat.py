@@ -107,14 +107,14 @@ class ChatService:
             logger.warning("Cannot catch up - no text-router pod found")
             return 0
 
-        logger.info(f"Attempting to catch up chat from pod: {pod_name}")
+        logger.debug(f"Attempting to catch up chat from pod: {pod_name}")
 
         # Get pod logs first, then filter locally
         log_cmd = f"sudo kubectl logs -n {namespace} {pod_name} --tail=2000 2>/dev/null"
         out, err, rc = self.ssh.run(log_cmd, timeout=30)
 
         if rc != 0 or not out:
-            logger.warning(f"Cannot catch up - failed to get pod logs: {err}")
+            logger.debug(f"Cannot catch up - failed to get pod logs (rc={rc})")
             return 0
 
         # Filter for chat messages locally

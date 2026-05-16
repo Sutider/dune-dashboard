@@ -41,7 +41,7 @@ def register_api_routes(app, services, settings):
         limiter = Limiter(
             app=app,
             key_func=get_remote_address,
-            default_limits=["200 per day", "50 per hour"],
+            default_limits=["2000 per day", "500 per hour"],
             storage_uri="memory://",
         )
     else:
@@ -53,7 +53,7 @@ def register_api_routes(app, services, settings):
     # Server actions
     @app.route('/server/action', methods=['POST'])
     @auth_req
-    @limiter.limit("10 per hour")
+    @limiter.limit("500 per hour")
     def server_action():
         deployment = request.form.get('deployment', '')
         action = request.form.get('action', '')
@@ -104,7 +104,7 @@ def register_api_routes(app, services, settings):
 
     @app.route('/server/battlegroup/action', methods=['POST'])
     @auth_req
-    @limiter.limit("10 per hour")
+    @limiter.limit("500 per hour")
     def battlegroup_action():
         action = request.form.get('action', '')
         if action not in ('start', 'stop', 'restart'):
@@ -115,7 +115,7 @@ def register_api_routes(app, services, settings):
 
     @app.route('/server/battlegroup/update', methods=['POST'])
     @auth_req
-    @limiter.limit("5 per hour")
+    @limiter.limit("1000 per hour")
     def battlegroup_update():
         bg_script = settings['kubernetes']['battlegroup_script']
         out, err, rc = ssh.run(f'{bg_script} update', timeout=600)
@@ -186,7 +186,7 @@ def register_api_routes(app, services, settings):
 
     @app.route('/server/firewall/block', methods=['POST'])
     @auth_req
-    @limiter.limit("10 per hour")
+    @limiter.limit("500 per hour")
     def firewall_block():
         port = request.form.get('port', type=int)
         bgd_port = _get_bgd_nodeport()
@@ -232,7 +232,7 @@ def register_api_routes(app, services, settings):
 
     @app.route('/server/firewall/unblock', methods=['POST'])
     @auth_req
-    @limiter.limit("10 per hour")
+    @limiter.limit("500 per hour")
     def firewall_unblock():
         port = request.form.get('port', type=int)
         bgd_port = _get_bgd_nodeport()
@@ -340,7 +340,7 @@ def register_api_routes(app, services, settings):
     # Ban management
     @app.route('/api/ban_player', methods=['POST'])
     @auth_req
-    @limiter.limit("5 per hour")
+    @limiter.limit("1000 per hour")
     def api_ban_player():
         try:
             player_id = request.form.get('player_id', type=int)
@@ -403,7 +403,7 @@ def register_api_routes(app, services, settings):
 
     @app.route('/api/unban_player', methods=['POST'])
     @auth_req
-    @limiter.limit("5 per hour")
+    @limiter.limit("1000 per hour")
     def api_unban_player():
         try:
             player_id = request.form.get('player_id', type=int)
@@ -429,7 +429,7 @@ def register_api_routes(app, services, settings):
 
     @app.route('/api/kick_player', methods=['POST'])
     @auth_req
-    @limiter.limit("10 per hour")
+    @limiter.limit("500 per hour")
     def api_kick_player():
         try:
             player_id = request.form.get('player_id', type=int)
@@ -444,7 +444,7 @@ def register_api_routes(app, services, settings):
     # Vitals editing
     @app.route('/api/edit_vitals', methods=['POST'])
     @auth_req
-    @limiter.limit("10 per hour")
+    @limiter.limit("500 per hour")
     def api_edit_vitals():
         try:
             pawn_id = request.form.get('pawn_id', type=int)
