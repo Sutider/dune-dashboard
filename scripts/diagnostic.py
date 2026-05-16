@@ -96,7 +96,8 @@ def check_db_port_forward(settings):
         return True
     except Exception:
         print(f"  [FAIL] Cannot connect to localhost:{port}")
-        print("         Make sure the launcher started the SSH tunnel and port-forward")
+        print("         NOTE: This is expected if the launcher hasn't started yet.")
+        print("         Run the launcher and these will connect automatically.")
         return False
 
 
@@ -124,7 +125,8 @@ def check_director_port_forward(settings):
             return False
     except Exception:
         print(f"  [FAIL] Cannot connect to localhost:{port}")
-        print("         Make sure the launcher started the director port-forward")
+        print("         NOTE: This is expected if the launcher hasn't started yet.")
+        print("         Run the launcher and these will connect automatically.")
         return False
 
 
