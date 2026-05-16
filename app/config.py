@@ -87,7 +87,7 @@ DEFAULTS = {
             'image_size': {'width': 683, 'height': 683}
         },
         'HaggaBasin': {
-            'image': 'maps/T_WorldMap_Survival_1_D.png',
+            'image': 'maps/HaggaBasin_8k.webp',
             'label': 'Hagga Basin',
             'bounds': {
                 'min_x': 21352,
@@ -96,7 +96,7 @@ DEFAULTS = {
                 'max_y': 237943
             },
             'flip_y': False,
-            'image_size': {'width': 1228, 'height': 1228}
+            'image_size': {'width': 8000, 'height': 8000}
         }
     },
 }
