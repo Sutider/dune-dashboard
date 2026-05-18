@@ -93,8 +93,10 @@ AI_DOCS/
 VERSION
 
 # Security scripts (contain VM-specific configs)
-scripts/cleanup-miner.sh
-scripts/vm-security-changes.md
+scripts/
 
 # Audit logs directory
 app/logs/
+
+# Local settings with real credentials
+app/settings.yaml
