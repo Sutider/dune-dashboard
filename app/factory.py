@@ -7,6 +7,7 @@ import logging
 import logging.handlers
 import threading
 from flask import Flask, request, g
+from flask_login import current_user
 from flask_socketio import SocketIO
 from flask_limiter import Limiter
 from flask_wtf.csrf import CSRFProtect
