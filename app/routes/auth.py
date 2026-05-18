@@ -13,7 +13,7 @@ class AdminUser(UserMixin):
     def __init__(self, username):
         self.id = username
 
-def init_auth(app, settings, limiter=None):
+def init_auth(app, settings, limiter=None, audit_svc=None):
     login_manager.init_app(app)
 
     @login_manager.user_loader
@@ -39,6 +39,8 @@ def init_auth(app, settings, limiter=None):
 
             # Verify username matches
             if u != cfg_u:
+                if audit_svc:
+                    audit_svc.log('login_failed', {'username': u, 'reason': 'invalid_username'}, user='unknown', severity='warning')
                 flash('Invalid username or password')
                 return render_template('login.html')
 
@@ -49,8 +51,15 @@ def init_auth(app, settings, limiter=None):
                     ph = PasswordHasher()
                     if ph.verify(password_hash, p):
                         login_user(AdminUser(u))
+                        if audit_svc:
+                            audit_svc.log('login_success', {'username': u}, user=u, severity='info')
                         return redirect(url_for('overview'))
+                    else:
+                        if audit_svc:
+                            audit_svc.log('login_failed', {'username': u, 'reason': 'invalid_password'}, user=u, severity='warning')
                 except exceptions.VerifyMismatchError:
+                    if audit_svc:
+                        audit_svc.log('login_failed', {'username': u, 'reason': 'invalid_password'}, user=u, severity='warning')
                     pass
                 except Exception:
                     flash('Authentication error. Please try again.')
@@ -66,5 +75,8 @@ def init_auth(app, settings, limiter=None):
     @app.route('/logout')
     @login_required
     def logout():
+        user = current_user.id if current_user.is_authenticated else 'unknown'
         logout_user()
+        if audit_svc:
+            audit_svc.log('logout', {}, user=user, severity='info')
         return redirect(url_for('login'))

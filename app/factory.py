@@ -2,10 +2,11 @@
 
 import os
 import sys
+import time
 import logging
 import logging.handlers
 import threading
-from flask import Flask, request
+from flask import Flask, request, g
 from flask_socketio import SocketIO
 from flask_limiter import Limiter
 from flask_wtf.csrf import CSRFProtect
@@ -119,6 +120,31 @@ def create_app(settings_path=None):
         from flask import jsonify
         return jsonify({'error': 'Method not allowed', 'type': 'MethodNotAllowed'}), 405
 
+    # Request logging middleware
+    @app.before_request
+    def before_request_logging():
+        from flask import request
+        from flask_login import current_user
+        import time
+        g._request_start_time = time.time()
+        user = current_user.id if current_user.is_authenticated else 'anonymous'
+        logging.debug(f"Request: {request.method} {request.path} from {user}")
+
+    @app.after_request
+    def after_request_logging(response):
+        from flask import request, g
+        import time
+        duration = time.time() - g.get('_request_start_time', time.time())
+        user = current_user.id if current_user.is_authenticated else 'anonymous'
+        
+        # Only log API requests to avoid noise
+        if request.path.startswith('/api') or request.path.startswith('/server'):
+            logging.info(f"{request.method} {request.path} {response.status_code} {duration:.3f}s user={user}")
+        
+        # Add timing header
+        response.headers['X-Response-Time'] = f"{duration:.3f}s"
+        return response
+
     _setup_logging(settings)
 
     db_host = settings['database']['host']
@@ -196,6 +222,10 @@ def create_app(settings_path=None):
     audit_svc = AuditService()
     services['audit'] = audit_svc
 
+    # Track start time for uptime calculation
+    import time
+    app._start_time = time.time()
+
     socketio = SocketIO(app, cors_allowed_origins=[], async_mode='threading')
 
     # Initialize rate limiter
@@ -208,7 +238,7 @@ def create_app(settings_path=None):
     app.limiter = limiter
 
     if settings['auth']['enabled']:
-        init_auth(app, settings, limiter)
+        init_auth(app, settings, limiter, audit_svc)
 
     register_routes(app, services, settings)
     register_api_routes(app, services, settings)

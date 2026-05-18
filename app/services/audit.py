@@ -12,12 +12,30 @@ logger = logging.getLogger(__name__)
 class AuditService:
     """In-memory audit log service (could be extended to database)."""
     
+    SENSITIVE_KEYS = {'password', 'password_hash', 'secret_key', 'token', 'ssh_key', 'key', 'cert', 'credentials'}
+    
     def __init__(self, log_dir=None):
         self._lock = Lock()
         self._logs = []
         self._max_logs = 1000
         self._log_dir = log_dir or os.path.join(os.path.dirname(os.path.dirname(__file__)), 'logs')
         os.makedirs(self._log_dir, exist_ok=True)
+    
+    def _filter_sensitive(self, data):
+        """Remove sensitive data from details before logging to file."""
+        if not isinstance(data, dict):
+            return data
+        filtered = {}
+        for k, v in data.items():
+            if any(s in k.lower() for s in self.SENSITIVE_KEYS):
+                filtered[k] = '[REDACTED]'
+            elif isinstance(v, dict):
+                filtered[k] = self._filter_sensitive(v)
+            elif isinstance(v, list):
+                filtered[k] = [self._filter_sensitive(i) if isinstance(i, dict) else i for i in v]
+            else:
+                filtered[k] = v
+        return filtered
     
     def log(self, action, details=None, user='system', severity='info'):
         """Log an audit event."""
@@ -33,8 +51,10 @@ class AuditService:
             # Trim old logs
             if len(self._logs) > self._max_logs:
                 self._logs = self._logs[-self._max_logs:]
-            # Also write to file
-            self._write_to_file(entry)
+            # Also write to file (with sensitive data filtered)
+            safe_entry = entry.copy()
+            safe_entry['details'] = self._filter_sensitive(entry.get('details', {}))
+            self._write_to_file(safe_entry)
             logger.info(f"Audit: {action} by {user}")
     
     def _write_to_file(self, entry):

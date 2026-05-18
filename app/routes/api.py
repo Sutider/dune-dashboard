@@ -5,6 +5,8 @@ import logging
 import os
 import re
 import shlex
+import time
+from datetime import datetime
 from flask import Blueprint, request, jsonify
 from flask_login import login_required
 from flask_limiter import Limiter
@@ -36,6 +38,7 @@ def register_api_routes(app, services, settings):
     chat_svc = services['chat']
     admin_svc = services['admin']
     vehicle_svc = services['vehicle']
+    audit_svc = services.get('audit')
 
 # Get or create rate limiter - use existing one from factory if available
     if not hasattr(app, 'limiter'):
@@ -77,6 +80,12 @@ def register_api_routes(app, services, settings):
             return jsonify({'success': False, 'output': f'Unknown action: {action}'})
 
         out, err, rc = k8s.run(cmd)
+        
+        # Audit logging for server actions
+        if audit_svc and action in ['restart', 'scale_0', 'scale_1']:
+            severity = 'warning' if action in ['restart', 'scale_0'] else 'info'
+            audit_svc.log(f'server_{action}', {'deployment': deployment, 'result': rc}, user='admin', severity=severity)
+        
         return jsonify({'success': rc == 0, 'output': out + '\n' + err})
 
     @app.route('/server/pods')
@@ -1151,3 +1160,63 @@ def register_api_routes(app, services, settings):
         except Exception as e:
             logger.warning(f"Failed to save miner protection setting: {e}")
         return jsonify({'success': True, 'enabled': enabled})
+
+    # Health check endpoint (no auth required for monitoring systems)
+    @app.route('/api/health')
+    def api_health():
+        """Health check for monitoring systems."""
+        health = {
+            'status': 'healthy',
+            'timestamp': datetime.now().isoformat(),
+            'checks': {}
+        }
+        
+        # Check database
+        try:
+            db.execute('SELECT 1')
+            health['checks']['database'] = {'status': 'ok'}
+        except Exception as e:
+            health['checks']['database'] = {'status': 'error', 'message': str(e)}
+            health['status'] = 'degraded'
+        
+        # Check SSH
+        try:
+            out, err, rc = ssh.run('echo OK')
+            if rc == 0 and 'OK' in out:
+                health['checks']['ssh'] = {'status': 'ok'}
+            else:
+                health['checks']['ssh'] = {'status': 'error', 'message': 'SSH command failed'}
+                health['status'] = 'degraded'
+        except Exception as e:
+            health['checks']['ssh'] = {'status': 'error', 'message': str(e)}
+            health['status'] = 'degraded'
+        
+        # Check Kubernetes
+        try:
+            out, err, rc = k8s.run('get nodes')
+            if rc == 0:
+                health['checks']['kubernetes'] = {'status': 'ok'}
+            else:
+                health['checks']['kubernetes'] = {'status': 'error', 'message': 'kubectl failed'}
+                health['status'] = 'degraded'
+        except Exception as e:
+            health['checks']['kubernetes'] = {'status': 'error', 'message': str(e)}
+            health['status'] = 'degraded'
+        
+        # Check miner protection
+        if miner_protection:
+            mp_status = miner_protection.get_status()
+            health['checks']['miner_protection'] = {
+                'status': 'ok' if mp_status.get('enabled') else 'disabled',
+                'enabled': mp_status.get('enabled', False)
+            }
+        else:
+            health['checks']['miner_protection'] = {'status': 'not_configured'}
+        
+        # Add dashboard uptime
+        start_time = getattr(app, '_start_time', None)
+        if start_time:
+            health['uptime_seconds'] = int(time.time() - start_time)
+        
+        status_code = 200 if health['status'] == 'healthy' else 503
+        return jsonify(health), status_code
